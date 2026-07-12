@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Інтеграція та Фільтрація Камер</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #2c3e50;
+        }
+        .file-upload {
+            margin: 20px 0;
+            padding: 15px;
+            border: 2px dashed #3498db;
+            border-radius: 5px;
+            background: #ecf0f1;
+            text-align: center;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .btn-upload {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .btn-upload:hover {
+            background: #2980b9;
+        }
+        .info {
+            background: #e8f4f8;
+            padding: 10px;
+            border-left: 5px solid #3498db;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #2c3e50;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .counter {
+            font-weight: bold;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Завантаження та фільтрація бази камер</h2>
+    
+    <div class="info">
+        <strong>Налаштування:</strong> <br>
+        • Швидкості 70, 80 та 90 км/год автоматично <strong>відсікаються</strong>.<br>
+        • Дистанція наближення до камер за замовчуванням встановлена на <strong>200 м</strong>.
+    </div>
+
+    <div class="file-upload">
+        <label for="csvFile" class="btn-upload">Натисніть, щоб вибрати та завантажити CSV</label>
+        <input type="file" id="csvFile" accept=".csv">
+        <div id="fileName" style="margin-top: 10px; color: #555;"></div>
+    </div>
+
+    <div class="counter" id="resultCounter"></div>
+    <div id="tableContainer"></div>
+</div>
+
+<script>
+document.getElementById('csvFile').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    document.getElementById('fileName').textContent = `Файл: ${file.name}`;
+    
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        const text = event.target.result;
+        processData(text);
+    };
+    reader.readAsText(file);
+});
+
+function processData(csvText) {
+    // Розбиваємо файл на рядки
+    const lines = csvText.split(/\r?\n/);
+    if (lines.length === 0) return;
+
+    // Припускаємо, що перший рядок — це заголовок (наприклад: ID, Широта, Довгота, Швидкість)
+    // Якщо у твоєму файлі немає заголовка, логіку парсингу індексів можна спростити
+    const headers = lines[0].split(',');
+    
+    // Шукаємо індекс колонки зі швидкістю. 
+    // Якщо у файлі просто цифри без заголовка, можна поставити фіксований індекс, наприклад 3.
+    let speedIndex = headers.findIndex(h => h.toLowerCase().includes('швидкість') || h.toLowerCase().includes('speed'));
+    if (speedIndex === -1) speedIndex = 3; // резервний варіант, якщо заголовок не знайдено
+
+    let filteredRows = [];
+    let excludedCount = 0;
+
+    // Проходимо по всіх рядках (починаючи з 1, бо 0 — це заголовок)
+    for (let i = 1; i < lines.length; i++) {
+        const row = lines[i].split(',');
+        if (row.length <= 1) continue; // пропускаємо пусті рядки
+
+        const speed = parseInt(row[speedIndex]);
+
+        // Відсікаємо камери на 70, 80 та 90 км/год
+        if (speed === 70 || speed === 80 || speed === 90) {
+            excludedCount++;
+            continue; 
+        }
+
+        // Додаємо дефолтну дистанцію наближення 200 м до кожного запису
+        // Можна або замінити стару колонку дистанції, або просто додати нову в кінець
+        const updatedRow = [...row, "200 м"];
+        filteredRows.push(updatedRow);
+    }
+
+    // Оновлюємо заголовок таблиці, додаючи нову колонку дистанції
+    const updatedHeaders = [...headers, "Дистанція попередження"];
+
+    displayTable(updatedHeaders, filteredRows);
+    document.getElementById('resultCounter').innerHTML = 
+        `Відображено камер: ${filteredRows.length} | Відфільтровано (видалено 70/80/90 км/год): ${excludedCount}`;
+}
+
+function displayTable(headers, rows) {
+    let html = '<table><thead><tr>';
+    headers.forEach(h => html += `<th>${h}</th>`);
+    html += '</tr></thead><tbody>';
+
+    rows.forEach(row => {
+        html += '<tr>';
+        row.forEach(cell => html += `<td>${cell}</td>`);
+        html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    document.getElementById('tableContainer').innerHTML = html;
+}
+</script>
+
+</body>
+</html>
