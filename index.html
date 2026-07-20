@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Mockup</title>
+    <style>
+        body {
+            background-color: #050505;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 12px;
+        }
+        /* Шапка з кнопками */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 8px 12px 8px;
+        }
+        .btn-group { display: flex; gap: 6px; }
+        .btn {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #888;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .btn.active { color: #38761d; font-weight: bold; }
+        .btn.blue { color: #007aff; }
+        
+        /* 6-колонкова сітка дашборду */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 10px;
+        }
+
+        /* Загальні стилі плиток */
+        .tile {
+            background-color: #0c0c0e;
+            border: 1px solid #1c1c1e;
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            box-sizing: border-box;
+        }
+        .tile-title {
+            font-size: 11px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            position: absolute;
+            top: 15px;
+        }
+        .tile-value {
+            font-size: 42px;
+            font-weight: 300;
+        }
+
+        /* Великі плитки (Верхній ряд) */
+        .tile.size-2x2 {
+            grid-column: span 2;
+            height: 180px;
+        }
+        
+        /* Маленькі плитки (Нижній ряд) */
+        .tile.size-1x1 {
+            grid-column: span 1;
+            height: 85px;
+        }
+        .tile.size-1x1 .tile-value { font-size: 20px; }
+        .tile.size-1x1 .tile-title { top: 8px; font-size: 9px; }
+
+        /* Стилі кольорів параметрів */
+        .t-eng { color: #3498db; }
+        .gps { color: #1abc9c; }
+        .rpm { color: #f1c40f; }
+        .volt { color: #2ecc71; }
+        .tilt { color: #e91e63; }
+
+        /* Плитка з картою та зміщенням */
+        .map-tile {
+            background: #111115;
+            overflow: hidden;
+            padding: 0;
+            align-items: stretch;
+            justify-content: stretch;
+        }
+        .mock-map {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            background: radial-gradient(circle at 50% 50%, #222 10%, #151518 80%);
+            /* Сітка доріг на карті */
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        .nav-line {
+            position: absolute;
+            width: 4px;
+            background: #007aff;
+            top: 0;
+            left: 50%;
+            height: 80%;
+            box-shadow: 0 0 10px #007aff;
+        }
+        /* Точка GPS зміщена на 20% знизу (тобто top: 80%) */
+        .gps-marker {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #ffffff;
+            border: 3px solid #007aff;
+            border-radius: 50%;
+            top: 80%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 15px #007aff;
+        }
+        .map-label {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.6);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="btn-group">
+            <button class="btn active">● Connect</button>
+            <button class="btn">Скинути</button>
+            <button class="btn">PiP</button>
+            <button class="btn">Trip</button>
+        </div>
+        <button class="btn">Налаштувати</button>
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- ВЕРХНІЙ РЯД (Великі плитки 2х2) -->
+        <div class="tile size-2x2">
+            <div class="tile-title t-eng">T_ENG</div>
+            <div class="tile-value">-- --</div>
+        </div>
+        
+        <div class="tile size-2x2">
+            <div class="tile-title gps">GPS</div>
+            <div class="tile-value">0</div>
+        </div>
+        
+        <div class="tile size-2x2 map-tile">
+            <div class="mock-map">
+                <div class="map-label">MAP (Leaflet)</div>
+                <div class="nav-line"></div>
+                <div class="gps-marker"></div> <!-- Маркер 20% знизу -->
+            </div>
+        </div>
+
+        <!-- НИЖНІЙ РЯД (Всі інші параметри 1х1) -->
+        <div class="tile size-1x1">
+            <div class="tile-title" style="color: #00eeee;">TPS%</div>
+            <div class="tile-value">-- --</div>
+        </div>
+        <div class="tile size-1x1">
+            <div class="tile-title" style="color: #9b59b6;">T_AIR</div>
+            <div class="tile-value">-- --</div>
+        </div>
+        <div class="tile size-1x1">
+            <div class="tile-title" style="color: #a569bd;">CYL1 AP</div>
+            <div class="tile-value">-- --</div>
+        </div>
+        <div class="tile size-1x1">
+            <div class="tile-title" style="color: #e67e22;">INJ RATE</div>
+            <div class="tile-value">-- --</div>
+        </div>
+        <div class="tile size-1x1">
+            <div class="tile-title rpm">RPM</div>
+            <div class="tile-value" style="font-weight: bold;">0</div>
+        </div>
+        <div class="tile size-1x1">
+            <div class="tile-title volt">VOLT</div>
+            <div class="tile-value">-- --</div>
+        </div>
+    </div>
+
+</body>
+</html>
