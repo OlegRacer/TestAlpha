@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>vRacer Map Cache Finder</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+        #map { width: 100%; height: 100vh; background: #e5e5e5; }
+        #info-panel {
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px 20px;
+            border-radius: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+            text-align: center;
+            font-size: 14px;
+            font-weight: bold;
+            color: #222;
+            pointer-events: none;
+            max-width: 90%;
+        }
+        #status {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2000;
+            background: white;
+            padding: 16px 24px;
+            border-radius: 12px;
+            font-family: sans-serif;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div id="status">Аналіз файлу кешу VRacer...</div>
+<div id="info-panel">Пошук кешу та вашої геопозиції...</div>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+
+<script>
+    // Допоміжні функції переведення координат тайлів у Lat/Lng
+    function tile2long(x, z) { return (x / Math.pow(2, z) * 360 - 180); }
+    function tile2lat(y, z) {
+        const n = Math.PI - 2 * Math.PI * y / Math.pow(2, z);
+        return (180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))));
+    }
+
+    async function startApp() {
+        const statusEl = document.getElementById('status');
+        const infoEl = document.getElementById('info-panel');
+        
+        // Ініціалізація базової карти для географічного контексту
+        const map = L.map('map').setView([0, 0], 2);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        try {
+            // Завантаження бібліотеки SQL
+            const SQL = await initSqlJs({
+                locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+            });
+
+            const response = await fetch('./VRacer.mbtiles');
+            if (!response.ok) throw new Error('Файл VRacer.mbtiles не знайдено.');
+
+            const buffer = await response.arrayBuffer();
+            const db = new SQL.Database(new Uint8Array(buffer));
+
+            // 1. Визначаємо межі кешу
+            let bounds = null;
+
+            // Спроба прочитати з metadata
+            try {
+                const stmt = db.prepare("SELECT value FROM metadata WHERE name='bounds'");
+                if (stmt.step()) {
+                    const b = stmt.getAsObject().value.split(',').map(Number);
+                    bounds = [[b[1], b[0]], [b[3], b[2]]];
+                }
+                stmt.free();
+            } catch(e){}
+
+            // Якщо в метаданих меж немає — вираховуємо точні межі з таблиці тайлів
+            if (!bounds) {
+                const zStmt = db.prepare("SELECT MAX(zoom_level) as maxZ FROM tiles");
+                let maxZ = 14;
+                if (zStmt.step()) maxZ = zStmt.getAsObject().maxZ;
+                zStmt.free();
+
+                const rStmt = db.prepare("SELECT MIN(tile_column) as minX, MAX(tile_column) as maxX, MIN(tile_row) as minY, MAX(tile_row) as maxY FROM tiles WHERE zoom_level=?");
+                rStmt.bind([maxZ]);
+                if (rStmt.step()) {
+                    const r = rStmt.getAsObject();
+                    const minY_xyz = (1 << maxZ) - 1 - r.maxY;
+                    const maxY_xyz = (1 << maxZ) - 1 - r.minY;
+
+                    const south = tile2lat(maxY_xyz + 1, maxZ);
+                    const north = tile2lat(minY_xyz, maxZ);
+                    const west = tile2long(r.minX, maxZ);
+                    const east = tile2long(r.maxX + 1, maxZ);
+
+                    bounds = [[south, west], [north, east]];
+                }
+                rStmt.free();
+            }
+
+            if (!bounds) throw new Error('Не вдалося визначити межі кешу у файлі.');
+
+            const cacheBounds = L.latLngBounds(bounds);
+            const cacheCenter = cacheBounds.getCenter();
+
+            // 2. Малюємо яскраву червону рамку навколо кешу
+            L.rectangle(cacheBounds, {
+                color: "#ff3300",
+                weight: 3,
+                fillColor: "#ff3300",
+                fillOpacity: 0.2
+            }).addTo(map).bindPopup("<b>📦 Зона кешу VRacer</b>").openPopup();
+
+            // 3. Відображаємо сам кеш поверх карти
+            const MBTilesLayer = L.TileLayer.extend({
+                createTile: function(coords, done) {
+                    const tile = document.createElement('img');
+                    const z = coords.z;
+                    const x = coords.x;
+                    const tms_y = (1 << z) - 1 - coords.y;
+
+                    try {
+                        const stmt = db.prepare("SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?");
+                        stmt.bind([z, x, tms_y]);
+                        if (stmt.step()) {
+                            const blob = new Blob([stmt.getAsObject().tile_data], { type: 'image/png' });
+                            tile.src = URL.createObjectURL(blob);
+                        }
+                        stmt.free();
+                    } catch (e) {}
+
+                    setTimeout(() => done(null, tile), 0);
+                    return tile;
+                }
+            });
+            new MBTilesLayer({ zIndex: 100 }).addTo(map);
+
+            statusEl.style.display = 'none';
+
+            // 4. Отримуємо геопозицію користувача
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                    const userLatLng = L.latLng(pos.coords.latitude, pos.coords.longitude);
+
+                    // Маркер користувача
+                    L.circleMarker(userLatLng, {
+                        radius: 9,
+                        fillColor: "#007aff",
+                        color: "#ffffff",
+                        weight: 3,
+                        fillOpacity: 1
+                    }).addTo(map).bindPopup("<b>📍 Ви тут</b>");
+
+                    // Лінія від користувача до кешу
+                    L.polyline([userLatLng, cacheCenter], {
+                        color: "#007aff",
+                        dashArray: "6, 9",
+                        weight: 3
+                    }).addTo(map);
+
+                    // Розрахунок відстані
+                    const distMeters = userLatLng.distanceTo(cacheCenter);
+                    const distKm = (distMeters / 1000).toFixed(1);
+
+                    infoEl.innerHTML = `📍 До збереженого кешу: <b>${distKm} км</b>`;
+
+                    // Показуємо на екрані і користувача, і кеш одночасно
+                    const totalBounds = L.latLngBounds([userLatLng]).extend(cacheBounds);
+                    map.fitBounds(totalBounds, { padding: [50, 50] });
+
+                }, (err) => {
+                    infoEl.innerHTML = "📦 Кеш знайдено! (Геолокація вимкнена)";
+                    map.fitBounds(cacheBounds, { padding: [30, 30] });
+                });
+            } else {
+                map.fitBounds(cacheBounds, { padding: [30, 30] });
+            }
+
+        } catch (err) {
+            statusEl.innerText = "Помилка: " + err.message;
+            statusEl.style.color = "#d32f2f";
+        }
+    }
+
+    startApp();
+</script>
+
+</body>
+</html>
