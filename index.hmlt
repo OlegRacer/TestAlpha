@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>vRacer Карта</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #map { height: 100vh; width: 100%; margin: 0; }
+        body { margin: 0; }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // Ініціалізація карти
+    const map = L.map('map').setView([0, 0], 2);
+
+    // Додаємо наш локальний шар тайлів
+    L.tileLayer('/tiles/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        minZoom: 0,
+        attribution: 'vRacer Map'
+    }).addTo(map);
+</script>
+
+</body>
+</html>
