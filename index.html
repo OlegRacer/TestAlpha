@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>vRacer Dash Pro - Navigation Test</title>
+<style>
+:root {
+  --bg: #000000; --panel: #0d0d0f; --line: rgba(255,255,255,0.1);
+  --text: #f2f2f0; --muted: #888; --cyan: #37e0e6; --amber: #ffb74d; --red: #ff4d4d;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+html, body { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; color: var(--text); font-family: sans-serif; }
+
+/* TOPBAR */
+.tb {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  display: flex; align-items: center; gap: 8px; padding: max(6px, env(safe-area-inset-top)) 10px 6px;
+  background: #000; border-bottom: 1px solid var(--line); height: 50px;
+}
+.pill {
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px;
+  font-size: 12px; color: var(--text); background: var(--panel); cursor: pointer;
+}
+.pill.active { border-color: var(--cyan); color: var(--cyan); }
+
+/* MAP CONTAINER */
+#map { position: fixed; inset: 0; top: 50px; z-index: 1; }
+
+/* NAV UI PANELS */
+#navOverlay {
+  position: fixed; bottom: 20px; left: 10px; right: 10px; z-index: 2000;
+  background: rgba(13, 13, 15, 0.92); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px; backdrop-filter: blur(10px); display: flex; flex-direction: column; gap: 8px;
+}
+.input-row { display: flex; gap: 6px; }
+input[type="text"] {
+  flex: 1; background: #000; border: 1px solid var(--line); border-radius: 6px;
+  padding: 8px 10px; color: #fff; font-size: 13px; outline: none;
+}
+button.action-btn {
+  background: var(--cyan); color: #000; border: none; border-radius: 6px;
+  padding: 8px 14px; font-weight: bold; font-size: 12px; cursor: pointer;
+}
+.options-row { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); }
+
+/* HUD SPEED & INSTRUCTION DISPLAY */
+#hudPanel {
+  position: fixed; top: 60px; left: 10px; right: 10px; z-index: 2000;
+  background: rgba(0, 0, 0, 0.85); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;
+  backdrop-filter: blur(6px);
+}
+.hud-instruction { font-size: 16px; font-weight: bold; color: var(--cyan); display: flex; align-items: center; gap: 8px; }
+.hud-speed { text-align: right; font-size: 11px; color: var(--muted); }
+.hud-speed-val { font-size: 18px; font-weight: bold; color: var(--amber); }
+</style>
+
+<!-- Leaflet CSS & JS -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+</head>
+<body>
+
+<div class="tb">
+  <button class="pill active" id="voiceUnlockBtn" onclick="initVoice()">🔊 Ввімкнути звук</button>
+  <span id="statusText" style="font-size: 11px; color: var(--muted); margin-left: auto;">GPS: Очікування...</span>
+</div>
+
+<!-- HUD Підказок та Швидкості -->
+<div id="hudPanel">
+  <div class="hud-instruction" id="hudTurnInfo">
+    <span>🧭</span> <span>Введіть маршрут</span>
+  </div>
+  <div class="hud-speed">
+    Ліміт: <span class="hud-speed-val" id="hudLimit">--</span> км/год
+  </div>
+</div>
+
+<!-- Карта -->
+<div id="map"></div>
+
+<!-- Панель керування -->
+<div id="navOverlay">
+  <div class="input-row">
+    <input type="text" id="destInput" placeholder="Куди їдемо? (напр., Taipei 101 або 台北101)">
+    <button class="action-btn" onclick="buildRoute()">Поїхали</button>
+  </div>
+  
+  <div class="options-row">
+    <label><input type="checkbox" id="curvyMode"> 🏍️ Звивистий маршрут (Curvy)</label>
+    <span id="distDisplay" style="color: var(--cyan); font-weight: bold;"></span>
+  </div>
+</div>
+
+<script>
+// --- ГЛОБАЛЬНІ ЗМІННІ ---
+let map, userMarker, routeLayer;
+let userCoords = [25.0330, 121.5654]; // Дефолтні координати (Тайбей)
+let currentSteps = [];
+let nextStepIndex = 0;
+
+// --- 1. ГОЛОСОВИЙ МОДУЛЬ (VOICE GUIDANCE) ---
+const VoiceGuidance = {
+  synth: window.speechSynthesis,
+  lastSpokenId: null,
+  enabled: false,
+
+  init() {
+    if (this.synth) {
+      // "Розблокування" аудіо для iOS Safari/Bluefy
+      const u = new SpeechSynthesisUtterance('Звуковий супровід активовано');
+      u.lang = 'uk-UA';
+      u.rate = 1.0;
+      this.synth.speak(u);
+      this.enabled = true;
+      document.getElementById('voiceUnlockBtn').innerText = "🔊 Звук Активний";
+      document.getElementById('voiceUnlockBtn').style.borderColor = "var(--cyan)";
+    }
+  },
+
+  speak(text) {
+    if (!this.synth || !this.enabled) return;
+    this.synth.cancel(); // Зупиняємо попередню підказку
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'uk-UA';
+    utterance.rate = 1.0;
+    this.synth.speak(utterance);
+  }
+};
+
+function initVoice() {
+  VoiceGuidance.init();
+}
+
+// --- 2. ІНІЦІАЛІЗАЦІЯ КАРТИ ТА GPS ---
+function initMap() {
+  map = L.map('map', { zoomControl: false, attributionControl: false }).setView(userCoords, 15);
+  
+  // Темний шар OSM
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    className: 'map-tiles'
+  }).addTo(map);
+
+  userMarker = L.circleMarker(userCoords, {
+    radius: 9, fillColor: '#37e0e6', color: '#ffffff', weight: 3, fillOpacity: 1
+  }).addTo(map);
+
+  // Відстеження GPS в реальному часі
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(
+      pos => {
+        userCoords = [pos.coords.latitude, pos.coords.longitude];
+        userMarker.setLatLng(userCoords);
+        document.getElementById('statusText').innerText = `GPS: OK (${pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0} км/год)`;
+        
+        // Перевірка маневрів під час руху
+        processNavigation();
+        fetchSpeedLimits(userCoords[0], userCoords[1]);
+      },
+      err => { document.getElementById('statusText').innerText = "GPS: Помилка"; },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  }
+}
+
+// --- 3. ГЕОКОДИНГ ТА ПОБУДОВА МАРШРУТУ ---
+async function geocode(query) {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&accept-language=zh-TW,en,uk&limit=1`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data && data.length > 0) {
+      return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+    }
+  } catch (e) { console.error('Geocode error:', e); }
+  return null;
+}
+
+// Алгоритм генерування звивистого маршруту (Curvy Waypoints)
+function generateCurvyWaypoints(start, end) {
+  const midLat = (start[0] + end[0]) / 2;
+  const midLon = (start[1] + end[1]) / 2;
+  const dLat = end[0] - start[0];
+  const dLon = end[1] - start[1];
+
+  // Додаємо відхилення по перпендикуляру
+  const perpLat = -dLon * 0.15;
+  const perpLon = dLat * 0.15;
+
+  return [
+    [start[0] + dLat * 0.33 + perpLat, start[1] + dLon * 0.33 + perpLon],
+    [start[0] + dLat * 0.66 - perpLat, start[1] + dLon * 0.66 - perpLon]
+  ];
+}
+
+async function buildRoute() {
+  const query = document.getElementById('destInput').value;
+  if (!query) return;
+
+  const destCoords = await geocode(query);
+  if (!destCoords) {
+    alert('Локацію не знайдено!');
+    return;
+  }
+
+  let waypoints = [userCoords];
+  const isCurvy = document.getElementById('curvyMode').checked;
+
+  if (isCurvy) {
+    const curvyPts = generateCurvyWaypoints(userCoords, destCoords);
+    waypoints.push(...curvyPts);
+  }
+  waypoints.push(destCoords);
+
+  // Формуємо OSRM запит
+  const coordsStr = waypoints.map(c => `${c[1]},${c[0]}`).join(';');
+  const url = `https://router.project-osrm.org/route/v1/bike/${coordsStr}?overview=full&geometries=geojson&steps=true`;
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.routes && data.routes.length > 0) {
+      const route = data.routes[0];
+
+      // Відображення на карті
+      if (routeLayer) map.removeLayer(routeLayer);
+      routeLayer = L.geoJSON(route.geometry, { style: { color: '#ffb74d', weight: 6, opacity: 0.8 } }).addTo(map);
+      map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+
+      // Парсинг кроків (Steps)
+      currentSteps = parseSteps(route.legs[0].steps);
+      nextStepIndex = 0;
+
+      const distKm = (route.distance / 1000).toFixed(1);
+      document.getElementById('distDisplay').innerText = `${distKm} км`;
+
+      VoiceGuidance.speak(`Маршрут побудовано. Дистанція ${distKm} кілометрів.`);
+      updateHUD();
+    }
+  } catch (e) {
+    alert('Помилка завантаження маршруту');
+  }
+}
+
+// --- 4. ОБРОБКА ПОВОРОТІВ ТА ГОЛОСОВІ ТРИГЕРИ ---
+function parseSteps(steps) {
+  return steps.map(step => {
+    const modifier = step.maneuver.modifier || '';
+    const type = step.maneuver.type;
+
+    let instruction = "Рухайтесь прямо";
+    let icon = "⬆️";
+
+    if (modifier.includes('left')) { instruction = "Поверніть ліворуч"; icon = "⬅️"; }
+    else if (modifier.includes('right')) { instruction = "Поверніть праворуч"; icon = "➡️"; }
+    else if (type === 'arrive') { instruction = "Ви прибули до призначення"; icon = "🏁"; }
+
+    if (step.name) instruction += ` на ${step.name}`;
+
+    return {
+      instruction: instruction,
+      icon: icon,
+      location: [step.maneuver.location[1], step.maneuver.location[0]]
+    };
+  });
+}
+
+function getDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function processNavigation() {
+  if (!currentSteps.length || nextStepIndex >= currentSteps.length) return;
+
+  const step = currentSteps[nextStepIndex];
+  const dist = getDistanceMeters(userCoords[0], userCoords[1], step.location[0], step.location[1]);
+
+  // Тригер 1: Попередження за 150м
+  const trigger150 = `step_${nextStepIndex}_150`;
+  if (dist <= 150 && dist > 40 && VoiceGuidance.lastSpokenId !== trigger150) {
+    VoiceGuidance.speak(`Через 150 метрів ${step.instruction}`);
+    VoiceGuidance.lastSpokenId = trigger150;
+  }
+
+  // Тригер 2: За 30м до повороту
+  const trigger30 = `step_${nextStepIndex}_30`;
+  if (dist <= 30 && VoiceGuidance.lastSpokenId !== trigger30) {
+    VoiceGuidance.speak(`Зараз ${step.instruction}`);
+    VoiceGuidance.lastSpokenId = trigger30;
+    nextStepIndex++; // Переходимо до наступного кроку
+    updateHUD();
+  }
+}
+
+function updateHUD() {
+  if (currentSteps[nextStepIndex]) {
+    const s = currentSteps[nextStepIndex];
+    document.getElementById('hudTurnInfo').innerHTML = `<span>${s.icon}</span> <span>${s.instruction}</span>`;
+  }
+}
+
+// --- 5. ОБМЕЖЕННЯ ШВИДКОСТІ (OVERPASS API) ---
+async function fetchSpeedLimits(lat, lon) {
+  const query = `[out:json][timeout:3];way(around:20,${lat},${lon})["maxspeed"];out tags;`;
+  try {
+    const res = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query));
+    const data = await res.json();
+    if (data.elements && data.elements.length > 0) {
+      const speed = parseInt(data.elements[0].tags.maxspeed, 10);
+      if (speed) document.getElementById('hudLimit').innerText = speed;
+    }
+  } catch (e) {}
+}
+
+window.onload = initMap;
+</script>
+</body>
+</html>
