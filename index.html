@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>vRacer Dash Pro - Ultimate Navigation</title>
+<style>
+:root {
+  --bg: #000000; --panel: #0d0d0f; --line: rgba(255,255,255,0.12);
+  --text: #f2f2f0; --muted: #888; --cyan: #37e0e6; --amber: #ffb74d; --red: #ff4d4d;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+html, body { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+
+/* TOPBAR */
+.tb {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  display: flex; align-items: center; gap: 8px; padding: max(6px, env(safe-area-inset-top)) 10px 6px;
+  background: rgba(0,0,0,0.9); border-bottom: 1px solid var(--line); height: 50px;
+}
+.pill {
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px;
+  font-size: 12px; color: var(--text); background: var(--panel); cursor: pointer; flex-shrink: 0;
+}
+.pill.active { border-color: var(--cyan); color: var(--cyan); }
+
+/* MAP CONTAINER */
+#map { position: fixed; inset: 0; top: 50px; z-index: 1; }
+
+/* HUD SPEED & INSTRUCTION DISPLAY */
+#hudPanel {
+  position: fixed; top: 60px; left: 10px; right: 10px; z-index: 2000;
+  background: rgba(13, 13, 15, 0.9); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;
+  backdrop-filter: blur(8px);
+}
+.hud-instruction { font-size: 15px; font-weight: bold; color: var(--cyan); display: flex; align-items: center; gap: 8px; }
+.hud-speed { text-align: right; font-size: 11px; color: var(--muted); }
+.hud-speed-val { font-size: 18px; font-weight: bold; color: var(--amber); }
+
+/* ROUTE BUILDER PANEL */
+#navOverlay {
+  position: fixed; bottom: 15px; left: 10px; right: 10px; z-index: 2000;
+  background: rgba(13, 13, 15, 0.94); border: 1px solid var(--line); border-radius: 14px;
+  padding: 12px; backdrop-filter: blur(10px); display: flex; flex-direction: column; gap: 8px;
+  max-height: 60vh; overflow-y: auto;
+}
+.input-group { display: flex; flex-direction: column; gap: 6px; }
+.input-row { display: flex; gap: 6px; align-items: center; }
+.input-label { font-size: 11px; color: var(--muted); width: 45px; font-weight: bold; }
+input[type="text"], select {
+  flex: 1; background: #000; border: 1px solid var(--line); border-radius: 6px;
+  padding: 8px 10px; color: #fff; font-size: 13px; outline: none;
+}
+.icon-btn {
+  background: #1a1a1e; color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center;
+  justify-content: center; cursor: pointer; font-weight: bold;
+}
+button.action-btn {
+  background: var(--cyan); color: #000; border: none; border-radius: 6px;
+  padding: 10px 14px; font-weight: bold; font-size: 13px; cursor: pointer; margin-top: 4px;
+}
+.options-row { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* POPUP BUTTONS */
+.popup-btn {
+  display: block; width: 100%; margin: 4px 0; padding: 6px;
+  background: #222; color: #fff; border: 1px solid var(--line);
+  border-radius: 4px; font-size: 11px; cursor: pointer; text-align: center;
+}
+.popup-btn.primary { background: var(--cyan); color: #000; font-weight: bold; }
+</style>
+
+<!-- Leaflet CSS & JS -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+</head>
+<body>
+
+<div class="tb">
+  <button class="pill" id="voiceUnlockBtn" onclick="initVoice()">🔊 Ввімкнути звук</button>
+  <button class="pill" onclick="resetRoute()">🗑️ Скинути</button>
+  <span id="statusText" style="font-size: 11px; color: var(--muted); margin-left: auto;">GPS: Очікування...</span>
+</div>
+
+<!-- HUD Підказок та Швидкості -->
+<div id="hudPanel">
+  <div class="hud-instruction" id="hudTurnInfo">
+    <span>🧭</span> <span>Оберіть маршрут</span>
+  </div>
+  <div class="hud-speed">
+    Ліміт: <span class="hud-speed-val" id="hudLimit">--</span> км/год
+  </div>
+</div>
+
+<!-- Карта -->
+<div id="map"></div>
+
+<!-- Панель керування -->
+<div id="navOverlay">
+  <!-- Вибір Типу Маршруту -->
+  <div class="input-row">
+    <span class="input-label">Режим:</span>
+    <select id="routeMode">
+      <option value="fastest">🚀 Найшвидший (Fastest)</option>
+      <option value="curvy">🏍️ Звивистий (Curvy / Twisties)</option>
+      <option value="scenic">🏞️ Сценічний / Мальовничий (Scenic)</option>
+      <option value="no_highways">🌿 Без автобанів (Avoid Highways)</option>
+      <option value="bike">🚲 Вело / Скутер (Bike / Scooter)</option>
+    </select>
+  </div>
+
+  <div class="input-group" id="waypointsContainer">
+    <!-- Звідки -->
+    <div class="input-row">
+      <span class="input-label">Звідки:</span>
+      <input type="text" id="startInput" placeholder="Моє місцезнаходження (GPS)">
+    </div>
+    <!-- Куди -->
+    <div class="input-row" id="destRow">
+      <span class="input-label">Куди:</span>
+      <input type="text" id="destInput" placeholder="Адреса / Назва / Клік на карті">
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 6px;">
+    <button class="icon-btn" style="width: auto; padding: 0 10px; font-size: 11px;" onclick="addWaypointInput()">+ Зупинка</button>
+    <button class="action-btn" style="flex: 1;" onclick="buildRoute()">Побудувати 🚀</button>
+  </div>
+  
+  <div class="options-row">
+    <span style="font-size: 11px; color: var(--muted);">Дистанція:</span>
+    <span id="distDisplay" style="color: var(--cyan); font-weight: bold;">-- км</span>
+  </div>
+</div>
+
+<script>
+// --- ГЛОБАЛЬНІ ЗМІННІ ---
+let map, userMarker, routeLayer, pinnedMarker;
+let userCoords = [25.0330, 121.5654]; // Дефолт (Тайбей)
+let customStartCoords = null;
+let currentSteps = [];
+let nextStepIndex = 0;
+
+// --- 1. ГОЛОСОВИЙ МОДУЛЬ (VOICE GUIDANCE) ---
+const VoiceGuidance = {
+  synth: window.speechSynthesis,
+  lastSpokenId: null,
+  enabled: false,
+
+  init() {
+    if (this.synth) {
+      const u = new SpeechSynthesisUtterance('Звуковий супровід активовано');
+      u.lang = 'uk-UA';
+      u.rate = 1.0;
+      this.synth.speak(u);
+      this.enabled = true;
+      document.getElementById('voiceUnlockBtn').innerText = "🔊 Звук Активний";
+      document.getElementById('voiceUnlockBtn').classList.add('active');
+    }
+  },
+
+  speak(text) {
+    if (!this.synth || !this.enabled) return;
+    this.synth.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'uk-UA';
+    utterance.rate = 1.0;
+    this.synth.speak(utterance);
+  }
+};
+
+function initVoice() { VoiceGuidance.init(); }
+
+// --- 2. ІНІЦІАЛІЗАЦІЯ КАРТИ ТА БУЛАВОК ---
+function initMap() {
+  map = L.map('map', { zoomControl: false, attributionControl: false }).setView(userCoords, 14);
+  
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+  userMarker = L.circleMarker(userCoords, {
+    radius: 9, fillColor: '#37e0e6', color: '#ffffff', weight: 3, fillOpacity: 1
+  }).addTo(map);
+
+  // Кліки по карті для створення булавок
+  map.on('click', function(e) {
+    setPinMarker(e.latlng.lat, e.latlng.lng);
+  });
+
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(
+      pos => {
+        userCoords = [pos.coords.latitude, pos.coords.longitude];
+        userMarker.setLatLng(userCoords);
+        document.getElementById('statusText').innerText = `GPS: OK (${pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0} км/год)`;
+        processNavigation();
+        fetchSpeedLimits(userCoords[0], userCoords[1]);
+      },
+      err => { document.getElementById('statusText').innerText = "GPS: Без сигналу"; },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  }
+}
+
+function setPinMarker(lat, lng) {
+  if (pinnedMarker) map.removeLayer(pinnedMarker);
+
+  const popupContent = `
+    <div style="color:#000; font-size:12px; text-align:center;">
+      <b>📌 Обрана точка</b><br>
+      <button class="popup-btn" onclick="setAsStart(${lat}, ${lng})">🚩 Зробити Стартом</button>
+      <button class="popup-btn" onclick="addWaypointFromPin(${lat}, ${lng})">➕ Додати як Зупинку</button>
+      <button class="popup-btn primary" onclick="setAsDest(${lat}, ${lng})">🏁 Зробити Фінішем</button>
+    </div>
+  `;
+
+  pinnedMarker = L.marker([lat, lng]).addTo(map).bindPopup(popupContent).openPopup();
+}
+
+function setAsStart(lat, lng) {
+  customStartCoords = [lat, lng];
+  document.getElementById('startInput').value = `${lat.toFixed(4)}, ${lng.toFixed(4)} (Карта)`;
+  map.closePopup();
+}
+
+function setAsDest(lat, lng) {
+  document.getElementById('destInput').value = `${lat.toFixed(4)}, ${lng.toFixed(4)} (Карта)`;
+  document.getElementById('destInput').dataset.lat = lat;
+  document.getElementById('destInput').dataset.lng = lng;
+  map.closePopup();
+}
+
+function addWaypointFromPin(lat, lng) {
+  addWaypointInput(`${lat.toFixed(4)}, ${lng.toFixed(4)} (Карта)`, [lat, lng]);
+  map.closePopup();
+}
+
+function addWaypointInput(value = '', coords = null) {
+  const destRow = document.getElementById('destRow');
+  const row = document.createElement('div');
+  row.className = 'input-row waypoint-row';
+  
+  const index = document.querySelectorAll('.waypoint-row').length + 1;
+  row.innerHTML = `
+    <span class="input-label">Точка ${index}:</span>
+    <input type="text" class="wp-input" placeholder="Адреса зупинки" value="${value}">
+    <button class="icon-btn" onclick="this.parentElement.remove()" style="color:var(--red)">✕</button>
+  `;
+  
+  if (coords) row.querySelector('.wp-input').dataset.coords = JSON.stringify(coords);
+  destRow.parentNode.insertBefore(row, destRow);
+}
+
+// --- 3. ГЕНЕРАТИВНІ АЛГОРИТМИ МАРШРУТІВ ---
+
+// Звивистий маршрут (Curvy / Twisties)
+function generateCurvyWaypoints(start, end) {
+  const dLat = end[0] - start[0];
+  const dLon = end[1] - start[1];
+  const perpLat = -dLon * 0.18;
+  const perpLon = dLat * 0.18;
+
+  return [
+    [start[0] + dLat * 0.33 + perpLat, start[1] + dLon * 0.33 + perpLon],
+    [start[0] + dLat * 0.66 - perpLat, start[1] + dLon * 0.66 - perpLon]
+  ];
+}
+
+// Мальовничий маршрут (Scenic / Parks)
+function generateScenicWaypoints(start, end) {
+  const dLat = end[0] - start[0];
+  const dLon = end[1] - start[1];
+  // Зміщення вбік для охоплення природи
+  const offsetLat = dLon * 0.25;
+  const offsetLon = -dLat * 0.25;
+
+  return [
+    [start[0] + dLat * 0.5 + offsetLat, start[1] + dLon * 0.5 + offsetLon]
+  ];
+}
+
+async function geocode(query) {
+  if (!query || query.trim() === '') return null;
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&accept-language=zh-TW,en,uk&limit=1`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data && data.length > 0) return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+  } catch (e) { console.error(e); }
+  return null;
+}
+
+// --- 4. ПУБЛІКАЦІЯ МАРШРУТУ ТА OSRM РЕЖИМИ ---
+async function buildRoute() {
+  // Точка старту
+  let start = userCoords;
+  const startVal = document.getElementById('startInput').value;
+  if (customStartCoords && startVal.includes('(Карта)')) {
+    start = customStartCoords;
+  } else if (startVal.trim() !== '') {
+    const g = await geocode(startVal);
+    if (g) start = g;
+  }
+
+  // Фініш
+  let dest = null;
+  const destInput = document.getElementById('destInput');
+  if (destInput.dataset.lat && destInput.value.includes('(Карта)')) {
+    dest = [parseFloat(destInput.dataset.lat), parseFloat(destInput.dataset.lng)];
+  } else {
+    dest = await geocode(destInput.value);
+  }
+
+  if (!dest) {
+    alert('Будь ласка, вкажіть точний фініш');
+    return;
+  }
+
+  let routeWaypoints = [start];
+
+  // Зчитуємо ручні зупинки
+  const wpElements = document.querySelectorAll('.wp-input');
+  for (let el of wpElements) {
+    if (el.dataset.coords) {
+      routeWaypoints.push(JSON.parse(el.dataset.coords));
+    } else if (el.value.trim() !== '') {
+      const g = await geocode(el.value);
+      if (g) routeWaypoints.push(g);
+    }
+  }
+
+  // Застосовуємо обраний режим маршруту
+  const mode = document.getElementById('routeMode').value;
+  let osrmProfile = 'driving';
+
+  if (mode === 'curvy' && wpElements.length === 0) {
+    routeWaypoints.splice(1, 0, ...generateCurvyWaypoints(start, dest));
+    osrmProfile = 'bike';
+  } else if (mode === 'scenic' && wpElements.length === 0) {
+    routeWaypoints.splice(1, 0, ...generateScenicWaypoints(start, dest));
+    osrmProfile = 'bike';
+  } else if (mode === 'no_highways') {
+    osrmProfile = 'bike'; // В OSRM профіль 'bike' ефективно оминає швидкісні шосе
+  } else if (mode === 'bike') {
+    osrmProfile = 'bike';
+  } else {
+    osrmProfile = 'driving';
+  }
+
+  routeWaypoints.push(dest);
+
+  // Формуємо OSRM API запит
+  const coordsStr = routeWaypoints.map(c => `${c[1]},${c[0]}`).join(';');
+  const url = `https://router.project-osrm.org/route/v1/${osrmProfile}/${coordsStr}?overview=full&geometries=geojson&steps=true`;
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.routes && data.routes.length > 0) {
+      const route = data.routes[0];
+
+      if (routeLayer) map.removeLayer(routeLayer);
+      
+      // Колір залежно від режиму
+      let routeColor = '#37e0e6';
+      if (mode === 'curvy') routeColor = '#ffb74d';
+      if (mode === 'scenic') routeColor = '#81c784';
+
+      routeLayer = L.geoJSON(route.geometry, { style: { color: routeColor, weight: 6, opacity: 0.85 } }).addTo(map);
+      map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+
+      currentSteps = [];
+      route.legs.forEach(leg => {
+        currentSteps.push(...parseSteps(leg.steps));
+      });
+      nextStepIndex = 0;
+
+      const distKm = (route.distance / 1000).toFixed(1);
+      document.getElementById('distDisplay').innerText = `${distKm} км`;
+
+      VoiceGuidance.speak(`Маршрут побудовано. Дистанція ${distKm} кілометрів.`);
+      updateHUD();
+    }
+  } catch (e) {
+    alert('Помилка завантаження маршруту');
+  }
+}
+
+function parseSteps(steps) {
+  return steps.map(step => {
+    const modifier = step.maneuver.modifier || '';
+    const type = step.maneuver.type;
+
+    let instruction = "Рухайтесь прямо";
+    let icon = "⬆️";
+
+    if (modifier.includes('left')) { instruction = "Поверніть ліворуч"; icon = "⬅️"; }
+    else if (modifier.includes('right')) { instruction = "Поверніть праворуч"; icon = "➡️"; }
+    else if (type === 'arrive') { instruction = "Ви дісталися точки"; icon = "🏁"; }
+
+    if (step.name) instruction += ` на ${step.name}`;
+
+    return {
+      instruction: instruction,
+      icon: icon,
+      location: [step.maneuver.location[1], step.maneuver.location[0]]
+    };
+  });
+}
+
+function getDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function processNavigation() {
+  if (!currentSteps.length || nextStepIndex >= currentSteps.length) return;
+
+  const step = currentSteps[nextStepIndex];
+  const dist = getDistanceMeters(userCoords[0], userCoords[1], step.location[0], step.location[1]);
+
+  const trigger150 = `step_${nextStepIndex}_150`;
+  if (dist <= 150 && dist > 40 && VoiceGuidance.lastSpokenId !== trigger150) {
+    VoiceGuidance.speak(`Через 150 метрів ${step.instruction}`);
+    VoiceGuidance.lastSpokenId = trigger150;
+  }
+
+  const trigger30 = `step_${nextStepIndex}_30`;
+  if (dist <= 30 && VoiceGuidance.lastSpokenId !== trigger30) {
+    VoiceGuidance.speak(`Зараз ${step.instruction}`);
+    VoiceGuidance.lastSpokenId = trigger30;
+    nextStepIndex++;
+    updateHUD();
+  }
+}
+
+function updateHUD() {
+  if (currentSteps[nextStepIndex]) {
+    const s = currentSteps[nextStepIndex];
+    document.getElementById('hudTurnInfo').innerHTML = `<span>${s.icon}</span> <span>${s.instruction}</span>`;
+  }
+}
+
+function resetRoute() {
+  if (routeLayer) map.removeLayer(routeLayer);
+  if (pinnedMarker) map.removeLayer(pinnedMarker);
+  document.querySelectorAll('.waypoint-row').forEach(e => e.remove());
+  document.getElementById('startInput').value = '';
+  document.getElementById('destInput').value = '';
+  delete document.getElementById('destInput').dataset.lat;
+  delete document.getElementById('destInput').dataset.lng;
+  customStartCoords = null;
+  currentSteps = [];
+  document.getElementById('distDisplay').innerText = '-- км';
+  document.getElementById('hudTurnInfo').innerHTML = '<span>🧭</span> <span>Маршрут скинуто</span>';
+}
+
+async function fetchSpeedLimits(lat, lon) {
+  const query = `[out:json][timeout:3];way(around:20,${lat},${lon})["maxspeed"];out tags;`;
+  try {
+    const res = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query));
+    const data = await res.json();
+    if (data.elements && data.elements.length > 0) {
+      const speed = parseInt(data.elements[0].tags.maxspeed, 10);
+      if (speed) document.getElementById('hudLimit').innerText = speed;
+    }
+  } catch (e) {}
+}
+
+window.onload = initMap;
+</script>
+</body>
+</html>
