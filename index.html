@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>vRacer Dash Pro</title>
+<style>
+:root{
+  --bg:#000000;--panel:#0d0d0f;--line:rgba(255,255,255,0.07);
+  --text:#f2f2f0;--muted:#666;
+  --cyan:#37e0e6;--amber:#ffb74d;--red:#ff4d4d;
+  --green:#4ade80;--blue:#3b82f6;--yellow:#ffd23f;
+  --th:48px;
+  --sat-cold:0.70;--sat-warn:0.70;--sat-alrt:0.70;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+  user-select:none;-webkit-user-select:none;touch-action:manipulation;}
+html,body{margin:0;padding:0;height:100%;width:100%;
+  background:#000000 !important;color:#f2f2f0 !important;
+  font-family:'Rajdhani','Segoe UI',sans-serif;
+  -webkit-font-smoothing:antialiased;}
+
+/* TOPBAR */
+.tb{position:fixed;top:0;left:0;right:0;z-index:50;
+  display:flex;align-items:center;gap:5px;
+  padding:max(5px,env(safe-area-inset-top)) 8px 5px;
+  background:#000000;border-bottom:1px solid var(--line);
+  height:var(--th);
+  overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.tb::-webkit-scrollbar{display:none;}
+.pill{border:1px solid var(--line);border-radius:6px;padding:5px 9px;
+  font-size:12px;color:var(--muted);background:#0d0d0f;white-space:nowrap;cursor:pointer;
+  flex-shrink:0;}
+.pill.on{color:#9be8ff;border-color:#2b6f7a;}
+.pill.ok{color:#4ade80;border-color:rgba(74,222,128,0.4);}
+.pill.err{color:#ff8080;border-color:rgba(255,77,77,0.3);}
+.pill.go{color:var(--amber);border-color:rgba(255,183,77,0.3);}
+.pill.sim{color:#c084fc;border-color:rgba(192,132,252,0.4);background:rgba(192,132,252,0.06);}
+.pill.rec{color:#ff4d4d;border-color:rgba(255,77,77,0.5);background:rgba(255,77,77,0.08);animation:recPulse 1.2s ease-in-out infinite;}
+@keyframes recPulse{0%,100%{opacity:1;}50%{opacity:0.5;}}
+
+#bs{display:none;}
+#bs.err{display:inline-block;}
+#cb{position:relative;}
+#cb::before{content:'';position:absolute;top:-15px;left:-15px;right:-15px;bottom:-15px;}
+#eb{margin-left:auto;flex-shrink:0;border:1px solid var(--line);border-radius:6px;
+  padding:5px 11px;font-size:12px;color:#f2f2f0;background:#0d0d0f;cursor:pointer;}
+#eb.a{color:#000;background:var(--cyan);border-color:var(--cyan);font-weight:700;}
+html.ar-landscape{--th:36px;}
+html.ar-landscape .pill{font-size:11px;padding:3px 7px;}
+.pill.on{border-color:var(--cyan);color:var(--cyan);}
+html.ar-landscape #eb{font-size:11px;padding:3px 9px;}
+
+/* GRID */
+#grid{position:fixed;inset:0;background:#000000 !important;
+  padding-top:calc(env(safe-area-inset-top) + var(--th) + 2px);
+  padding-bottom:env(safe-area-inset-bottom,6px);overflow:hidden;}
+#gi{display:grid;gap:5px;padding:5px;height:100%;align-content:start;
+  grid-auto-flow:dense;
+  grid-template-columns:repeat(4,1fr);grid-auto-rows:minmax(130px,170px);}
+html.ar-landscape #gi{grid-template-columns:repeat(12,1fr);grid-auto-rows:minmax(100px,150px);}
+
+/* TILES */
+.tile{position:relative;border-radius:10px;background:var(--panel);
+  border:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:6px;overflow:hidden;-webkit-touch-callout:none;will-change:auto;
+  transition:background .4s,border-color .4s;}
+
+.tile.s1{grid-column:span 1;grid-row:span 1;}
+.tile.s22{grid-column:span 2;grid-row:span 2;}
+.tile.s21{grid-column:span 2;grid-row:span 1;}
+.tile.s41{grid-column:span 2;grid-row:span 1;}
+.tile.s23{grid-column:span 2;grid-row:span 3;}
+
+.video-tile {
+  grid-column: 1 / -1;
+  grid-row: span 1;
+  position: relative;
+  background: #0d0d0f;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+html.ar-landscape .video-tile{grid-column:span 8;grid-row:span 2;}
+html.ar-landscape .tile.s22{grid-column:span 4;grid-row:span 2;}
+html.ar-landscape .tile.s41{grid-column:span 4;grid-row:span 1;}
+html.ar-landscape .tile.s23{grid-column:span 4;grid-row:span 3;}
+
+/* Alert States */
+.tile.cold{background:rgba(59,130,246,var(--sat-cold))!important;border-color:var(--cyan)!important;box-shadow:0 0 18px rgba(59,130,246,0.6)!important;}
+.tile.cold .tl{color:#000!important;}
+.tile.cold .tun{background:#000!important;}
+.tile.warn{background:rgba(255,211,63,var(--sat-warn))!important;border-color:var(--amber)!important;box-shadow:0 0 18px rgba(255,211,63,0.6)!important;}
+.tile.alrt{background:rgba(255,77,77,var(--sat-alrt))!important;border-color:var(--red)!important;
+  animation:palrt 0.6s ease-in-out infinite;}
+@keyframes palrt{0%,100%{background:rgba(255,77,77,var(--sat-alrt));box-shadow:0 0 22px rgba(255,77,77,0.75);}50%{background:rgba(255,77,77,calc(var(--sat-alrt) * 0.556));box-shadow:0 0 8px rgba(255,77,77,0.4);}}
+.tile.ed{animation:jig .4s ease-in-out infinite;}
+.tile.alrt.ed{animation:jig .4s;}
+@keyframes jig{0%,100%{transform:rotate(0)}25%{transform:rotate(-.7deg)}75%{transform:rotate(.7deg)}}
+.tile.ds{animation:none!important;box-shadow:0 0 0 2px var(--cyan),0 0 16px rgba(55,224,230,0.25)!important;transform:scale(1.03);z-index:20;}
+.tile.dov{box-shadow:inset 0 0 0 2px var(--amber);}
+.rm{position:absolute;top:4px;right:4px;width:18px;height:18px;
+  border-radius:50%;background:#ff4d4d;color:#fff;
+  align-items:center;justify-content:center;font-size:12px;font-weight:700;
+  z-index:5;display:none;cursor:pointer;}
+.tile.ed .rm{display:flex;}
+.add{border-style:dashed;border-color:rgba(255,255,255,0.1);
+  background:rgba(255,255,255,0.01);color:var(--muted);font-size:26px;
+  cursor:pointer;animation:none!important;}
+
+/* TILE CONTENT */
+.tl{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--pc,var(--muted));margin-bottom:1px;text-align:center;
+  white-space:normal;word-break:break-word;line-height:1.2;font-weight:700;}
+.tv{font-family:'JetBrains Mono','Courier New',monospace;font-weight:700;
+  line-height:1;color:#fff;letter-spacing:1px;font-size:clamp(22px,6.5vw,39px);}
+.tu{font-size:10px;color:var(--muted);margin-top:2px;letter-spacing:1px;}
+.tun{width:50%;height:1px;background:var(--pc,var(--cyan));opacity:0.45;margin:3px 0;}
+.s22 .tv{font-size:clamp(35px,8.5vw,60px);}
+.s21 .tv{font-size:clamp(24px,6.5vw,43px);}
+html.ar-landscape .tl{font-size:11px;}
+html.ar-landscape .tv{font-size:clamp(20px,5vw,35px);}
+html.ar-landscape .s22 .tv{font-size:clamp(28px,6.5vw,47px);}
+html.ar-landscape .s41 .tv{font-size:clamp(24px,6vw,42px);}
+html.ar-landscape .s21 .tv{font-size:clamp(15px,4vw,26px);}
+html.ar-landscape .s1 .tv{font-size:clamp(14px,4vw,24px);}
+html.ar-landscape .tile.s1 .tl,html.ar-landscape .tile.s21 .tl{font-size:9px;}
+
+/* GAUGE */
+.gw{position:relative;width:100%;height:100%;min-height:50px;
+  display:flex;align-items:center;justify-content:center;}
+.gsvg{position:absolute;inset:0;width:100%;height:100%;}
+.gc{display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2;}
+.gbg{fill:none;stroke:rgba(255,255,255,0.05);stroke-width:5;}
+.gfg{fill:none;stroke:var(--pc,var(--cyan));stroke-width:5;stroke-linecap:round;}
+
+/* MAP TILE & MODAL */
+.tile.map-tile{padding:0;overflow:hidden;cursor:pointer;}
+.map-tile-viewport{position:absolute;inset:0;overflow:hidden;touch-action:none;border-radius:inherit;}
+.map-tile-inner{position:absolute;top:50%;left:50%;touch-action:none;}
+.map-tile-viewport .leaflet-control-container{display:none;}
+.tile.ed .map-tile-viewport{pointer-events:none;}
+.map-tile-viewport.map-theme-dark, #fullMapContainer.map-theme-dark{filter:invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);}
+
+.tsw{position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0;}
+.tsw input{opacity:0;width:0;height:0;position:absolute;}
+.tsw .sldr{position:absolute;inset:0;background:#333;border-radius:26px;transition:background .2s;cursor:pointer;}
+.tsw .sldr:before{position:absolute;content:"";height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:transform .2s;}
+.tsw input:checked + .sldr{background:var(--cyan);}
+.tsw input:checked + .sldr:before{transform:translateX(20px);}
+.map-tile-badge{position:absolute;top:6px;left:8px;z-index:500;font-size:9px;letter-spacing:1px;
+  color:#fff;background:rgba(0,0,0,0.55);padding:2px 6px;border-radius:6px;pointer-events:none;text-transform:uppercase;}
+
+/* FULLSCREEN MAP MODAL */
+.map-modal{position:fixed;inset:0;z-index:2000;background:#000;display:none;flex-direction:column;}
+.map-modal.sh{display:flex;}
+.map-modal-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#0d0d0f;border-bottom:1px solid var(--line);z-index:10;}
+.map-modal-body{flex:1;position:relative;width:100%;height:100%;}
+#fullMapContainer{width:100%;height:100%;}
+
+/* MODALS GENERAL */
+.mb{position:fixed;inset:0;background:rgba(0,0,0,0.82);
+  backdrop-filter:blur(4px);z-index:100;display:flex;align-items:flex-end;
+  justify-content:center;opacity:0;pointer-events:none;transition:opacity .18s ease;}
+.mb.sh{opacity:1;pointer-events:auto;}
+.ms{width:100%;max-width:620px;background:#0c0c0f;border:1px solid var(--line);
+  border-radius:16px 16px 0 0;max-height:88vh;display:flex;flex-direction:column;
+  transform:translateY(100%);transition:transform .22s cubic-bezier(.2,.9,.3,1);
+  padding-bottom:env(safe-area-inset-bottom);}
+.mb.sh .ms{transform:translateY(0);}
+.mh{padding:12px 14px 9px;display:flex;align-items:center;
+  justify-content:space-between;border-bottom:1px solid var(--line);flex-shrink:0;}
+.mh h3{margin:0;font-size:14px;letter-spacing:1px;font-weight:600;}
+.mc2{border:none;background:rgba(255,255,255,0.05);color:var(--text);
+  width:26px;height:26px;border-radius:50%;font-size:14px;cursor:pointer;}
+
+.dbgc{display:none;position:fixed;inset:0;z-index:9999;background:#000;flex-direction:column;
+  padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);}
+.dbgc.sh{display:flex;}
+.dbgc-h{display:flex;align-items:center;justify-content:space-between;
+  padding:10px 12px;border-bottom:1px solid var(--line);flex-shrink:0;background:#000;}
+.dbgc-h b{font-size:14px;letter-spacing:1px;}
+.dbgc-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+  padding:8px 10px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.45;}
+.dbgc-line{white-space:pre-wrap;word-break:break-word;padding:3px 0;
+  border-bottom:1px solid rgba(255,255,255,0.05);}
+.dbgc-line.warn{color:var(--amber);}
+.dbgc-line.error{color:var(--red);}
+.dbgc-line.log{color:#ccc;}
+
+.mbody{overflow-y:auto;padding:6px 11px;flex:1;}
+.gt{font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;padding:7px 5px 3px;}
+.pl{display:flex;flex-direction:column;gap:2px;}
+.pi{display:flex;align-items:center;justify-content:space-between;
+  padding:9px 11px;border-radius:9px;background:rgba(255,255,255,0.03);
+  border:1px solid transparent;font-size:13px;cursor:pointer;}
+.pi.sel{border-color:var(--cyan);background:rgba(55,224,230,0.07);}
+.pi .pn2{font-weight:600;}.pi .pc{color:var(--muted);font-size:10px;font-family:monospace;margin-left:5px;}
+.pi .ck{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-size:10px;color:transparent;flex-shrink:0;}
+.pi.sel .ck{border-color:var(--cyan);background:var(--cyan);color:#000;}
+.sr,.szr{display:flex;gap:5px;padding:7px 5px;flex-wrap:wrap;}
+.sb{flex:1;min-width:55px;border:1px solid var(--line);border-radius:9px;
+  padding:8px 5px;text-align:center;font-size:11px;
+  background:rgba(255,255,255,0.02);color:var(--muted);cursor:pointer;}
+.sb.sel{border-color:var(--cyan);color:#fff;background:rgba(55,224,230,0.07);}
+.ab{width:100%;padding:10px;border-radius:9px;border:none;
+  font-size:13px;font-weight:600;cursor:pointer;margin-bottom:7px;}
+.ab.pr{background:rgba(55,224,230,0.1);border:1px solid rgba(55,224,230,0.35);color:#9be8ff;}
+.ab.dn{background:rgba(255,77,77,0.07);border:1px solid rgba(255,77,77,0.25);color:#ff8080;}
+.tbar{display:flex;border-bottom:1px solid var(--line);flex-shrink:0;}
+.tab{flex:1;padding:9px;text-align:center;font-size:10px;font-weight:600;
+  letter-spacing:1px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;}
+.tab.a{color:var(--cyan);border-bottom-color:var(--cyan);}
+.ht{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+  background:rgba(0,0,0,0.95);border:1px solid var(--line);
+  padding:6px 14px;border-radius:18px;font-size:11px;color:var(--muted);
+  z-index:80;opacity:0;transition:opacity .25s ease;pointer-events:none;white-space:nowrap;}
+.ht.sh{opacity:1;}
+#blog{position:fixed;bottom:48px;left:7px;right:7px;background:rgba(0,0,0,0.97);
+  border:1px solid var(--line);border-radius:9px;padding:6px 9px;
+  font-family:monospace;font-size:10px;color:#4ade80;z-index:70;
+  max-height:80px;overflow-y:auto;display:none;}
+#blog.sh{display:block;}
+
+.cam-radar-badge{
+  position:absolute;top:6px;right:8px;display:none;align-items:center;gap:6px;
+  background:var(--panel);border:1px solid var(--line);
+  padding:3px 8px;border-radius:14px;z-index:10;
+  font-family:'Rajdhani','Segoe UI',sans-serif;
+}
+.cam-radar-badge .c-sign{
+  width:20px;height:20px;border-radius:50%;flex-shrink:0;
+  background:#fff;border:2px solid var(--red);color:#000;
+  font-family:'JetBrains Mono','Courier New',monospace;
+  font-size:10px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .15s,border-color .15s;
+}
+.cam-radar-badge .c-dist{
+  font-family:'JetBrains Mono','Courier New',monospace;
+  font-size:11px;font-weight:700;color:var(--text);
+}
+.cam-radar-badge.near .c-dist{color:var(--red);animation:camDistFlash .4s infinite alternate;}
+@keyframes camDistFlash{0%{opacity:.5;}100%{opacity:1;}}
+.cam-radar-badge.warn .c-sign{background:var(--amber);border-color:var(--amber);}
+.cam-radar-badge.danger .c-sign{background:var(--red);border-color:var(--red);animation:camDangerFlash .5s infinite alternate;}
+@keyframes camDangerFlash{0%{opacity:.55;}100%{opacity:1;}}
+.cam-radar-badge .c-sign.cam-type-redlight{background:#1a1a1a;border-color:var(--red);font-size:12px;}
+.cam-radar-badge .c-sign.cam-type-tech{background:#1e1b4b;border-color:#818cf8;font-size:11px;}
+</style>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="tb">
+  <button id="cb" class="pill">🔵 Connect</button>
+  <div id="bs" class="pill"></div>
+  <button id="pipBtnTop" class="pill">PiP</button>
+  <button id="tripBtn" class="pill">Trip</button>
+  <button id="routeBtnTop" class="pill" onclick="toggleRouteBtn()">Маршрут</button>
+  <button id="sndBtnTop" class="pill" onclick="toggleSoundBtn()">Звук</button>
+  <button id="consoleBtnTop" class="pill" onclick="toggleConsolePanel()">Консоль</button>
+  <button id="eb">Налаштувати</button>
+</div>
+
+<div id="grid">
+  <div id="gi">
+    <div id="dash-video-tile" class="video-tile">
+      <video id="pip-video" playsinline muted style="width:100%; height:100%; object-fit:cover; background:#000;"></video>
+    </div>
+  </div>
+</div>
+
+<!-- FULLSCREEN MAP MODAL -->
+<div class="map-modal" id="fullMapModal">
+  <div class="map-modal-header">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <b style="font-size:14px;letter-spacing:1px;">Навігаційна карта</b>
+      <span id="fullMapTEngBadge" style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--cyan);background:rgba(255,255,255,0.05);padding:2px 8px;border-radius:6px;border:1px solid var(--line);">T_Eng: --°C</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <label class="tsw" title="Темна тема">
+        <input type="checkbox" id="fullMapThemeToggle" onchange="toggleFullMapTheme(this.checked)">
+        <span class="sldr"></span>
+      </label>
+      <button class="mc2" onclick="closeFullMapModal()">✕</button>
+    </div>
+  </div>
+  <div class="map-modal-body">
+    <div id="fullMapContainer"></div>
+  </div>
+</div>
+
+<div id="blog"></div>
+<div class="ht" id="ht"></div>
+
+<div class="mb" id="em">
+  <div class="ms">
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 27.07.2026 06:49)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="tbar">
+      <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
+      <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
+      <div class="tab" id="t2" onclick="st(2)">ПАДІННЯ</div>
+      <div class="tab" id="t3" onclick="st(3)">КАРТА</div>
+    </div>
+    <div class="mbody" id="emb"></div>
+  </div>
+</div>
+
+<div class="mb" id="pm">
+  <div class="ms">
+    <div class="mh"><h3 id="pt">Параметр</h3><button class="mc2" id="pmc">✕</button></div>
+    <div class="mbody" id="pb"></div>
+  </div>
+</div>
+
+<canvas id="pip-canvas" style="display: none;"></canvas>
+
+<div class="dbgc" id="tripViewModal">
+  <div class="dbgc-body" id="tripViewBody" style="padding:0;"></div>
+</div>
+
+<div class="dbgc" id="tripOrderModal">
+  <div class="dbgc-h">
+    <b>Порядок графіків</b>
+    <button class="mc2" onclick="closeTripOrderModal()">✕</button>
+  </div>
+  <div class="dbgc-body" id="tripOrderList" style="padding:10px;"></div>
+</div>
+
+<div class="dbgc" id="dbgConsolePanel">
+  <div class="dbgc-h">
+    <b>Консоль</b>
+    <div style="display:flex;gap:6px;">
+      <button class="ab" style="background:#222;color:#fff;" onclick="copyConsoleLog()">📋 Копіювати</button>
+      <button class="ab dn" onclick="clearConsoleLog()">🗑 Очистити</button>
+      <button class="mc2" onclick="toggleConsolePanel()">✕</button>
+    </div>
+  </div>
+  <div class="dbgc-body" id="dbgc-body"></div>
+</div>
+
+<script>
+// ВЛАСНА КОНСОЛЬ
+const _consoleLog=[];
+const _origConsole={log:console.log,warn:console.warn,error:console.error};
+function _pushConsoleLine(type,args){
+  const line=Array.from(args).map(a=>{
+    if(a instanceof Error) return a.message;
+    if(typeof a==='object'){ try{ return JSON.stringify(a); }catch(e){ return String(a); } }
+    return String(a);
+  }).join(' ');
+  const t=new Date();
+  const stamp=String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')+':'+String(t.getSeconds()).padStart(2,'0');
+  _consoleLog.push({type,line,stamp});
+  if(_consoleLog.length>400) _consoleLog.shift();
+  const panel=document.getElementById('dbgConsolePanel');
+  if(panel && panel.classList.contains('sh')) renderConsolePanel();
+}
+console.log=function(...args){ _origConsole.log.apply(console,args); _pushConsoleLine('log',args); };
+console.warn=function(...args){ _origConsole.warn.apply(console,args); _pushConsoleLine('warn',args); };
+console.error=function(...args){ _origConsole.error.apply(console,args); _pushConsoleLine('error',args); };
+window.addEventListener('error', e=>{ _pushConsoleLine('error', [(e.message||'Error')+' @ '+(e.filename||'')+':'+(e.lineno||'')]); });
+window.addEventListener('unhandledrejection', e=>{ _pushConsoleLine('error', ['Unhandled promise rejection: '+(e.reason&&e.reason.message||e.reason)]); });
+
+function toggleConsolePanel(){
+  const p=document.getElementById('dbgConsolePanel');
+  if(!p) return;
+  p.classList.toggle('sh');
+  if(p.classList.contains('sh')) renderConsolePanel();
+}
+function renderConsolePanel(){
+  const body=document.getElementById('dbgc-body');
+  if(!body) return;
+  body.innerHTML=_consoleLog.map(e=>'<div class="dbgc-line '+e.type+'">['+e.stamp+'] '+
+    e.line.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>').join('') || '<div class="dbgc-line log">(поки що порожньо)</div>';
+  body.scrollTop=body.scrollHeight;
+}
+function clearConsoleLog(){ _consoleLog.length=0; renderConsolePanel(); }
+async function copyConsoleLog(){
+  const text=_consoleLog.map(e=>'['+e.stamp+'] '+e.type.toUpperCase()+': '+e.line).join('\n');
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); sht('Скопійовано в буфер'); }
+    else throw new Error('no clipboard api');
+  }catch(e){ console.warn('Копіювання в буфер не спрацювало:', e); alert(text); }
+}
+
+const P={
+  RPM:      {n:'RPM',      o:-1, s:0,sc:1,    b:0,  u:'rpm', mn:0,   mx:9000,c:'#ffd23f',src:'ble'},
+  T_Eng:    {n:'T_Eng',   o:-1, s:0,sc:1,    b:0,  u:'°C',  mn:0,   mx:130, c:'#3b82f6',src:'ble'},
+  TPS:      {n:'TPS%',    o:-1, s:0,sc:1,    b:0,  u:'%',   mn:0,   mx:100, c:'#37e0e6',src:'ble'},
+  GPS:      {n:'GPS',     o:-1, s:0,sc:1,    b:0,  u:'km/h',mn:0,   mx:300, c:'#ffffff',src:'gps'},
+  Volt:     {n:'Volt',    o:-1, s:0,sc:1,    b:0,  u:'V',   mn:10,  mx:16,  c:'#4ade80',src:'ble'},
+  T_Air:    {n:'T_Air',   o:-1, s:0,sc:1,    b:0,  u:'°C',  mn:-20, mx:80,  c:'#06b6d4',src:'ble'},
+  Inj_Rate: {n:'Inj Rate',o:-1, s:0,sc:1,    b:0,  u:'мс',   mn:0,   mx:25,  c:'#ff9f43',src:'ble'},
+  MAP:      {n:'Cyl1 AP',  o:-1, s:0,sc:1,    b:0,  u:'psi',  mn:0,  mx:100, c:'#a29bfe',src:'ble'},
+  Alt:      {n:'GPS H',    o:-1, s:0,sc:1,    b:0,  u:'м',    mn:0,  mx:3000,c:'#37e0e6',src:'gps'},
+  Gforce:   {n:'G-Сила',   o:-1, s:0,sc:1,    b:0,  u:'G',    mn:-1,  mx:2,   c:'#ff6b6b',src:'sensor'},
+  Lean:     {n:'Кут нахилу',o:-1,s:0,sc:1,    b:0,  u:'°',    mn:0, mx:90,  c:'#f472b6',src:'sensor'},
+  MapTile:  {n:'Карта',     o:-1,s:0,sc:1,    b:0,  u:'',     mn:0, mx:0,   c:'#4ade80',src:'gps'},
+};
+const PG=[
+  {t:'Всі параметри', k:['RPM','T_Eng','TPS','GPS','Volt','T_Air','Inj_Rate','MAP','Alt','Gforce','Lean']},
+];
+const V={};Object.keys(P).forEach(k=>V[k]=k==='RPM'?0:'--');
+
+function lg(k){try{const s=localStorage.getItem('ar_'+k);return s?JSON.parse(s):null;}catch(e){return null;}}
+function ls(k,v){try{localStorage.setItem('ar_'+k,JSON.stringify(v));}catch(e){}}
+
+const DA={T_cold:64,T_warn:90,T_crit:96,Volt_warn:12.5,Volt_crit:11.8,Spd_enabled:true,Fall_enabled:true,Sound_enabled:true,Fall_lean_deg:50,Fall_gforce:2.2,Fall_speed_kmh:3,Trip_bg_record:false};
+let AL={...DA,...(lg('al')||{})};
+
+let audioCtx=null;
+function gac(){
+  if(!audioCtx) {
+    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  }
+  if(audioCtx && audioCtx.state==='suspended') {
+    audioCtx.resume();
+  }
+  return audioCtx;
+}
+
+let alrtSnd=false,alrtInt=null;
+async function beepAlert(){
+  if(AL.Sound_enabled===false) return;
+  try{
+    const ac=gac();
+    if(ac.state==='suspended') await ac.resume();
+    const t=ac.currentTime;
+    [[2600,0,.12],[1800,.16,.12],[2600,.32,.12]].forEach(([f,st,d])=>{
+      const o=ac.createOscillator(),g=ac.createGain();
+      o.connect(g);g.connect(ac.destination);
+      o.frequency.value=f;o.type='square';
+      g.gain.setValueAtTime(0,t+st);
+      g.gain.linearRampToValueAtTime(0.75,t+st+.01);
+      g.gain.linearRampToValueAtTime(0.75,t+st+d-.02);
+      g.gain.linearRampToValueAtTime(0,t+st+d);
+      o.start(t+st);o.stop(t+st+d);
+    });
+  }catch(e){}
+}
+function startAlert(){if(alrtSnd)return;alrtSnd=true;beepAlert();alrtInt=setInterval(beepAlert,1000);}
+function stopAlert(){if(!alrtSnd)return;alrtSnd=false;clearInterval(alrtInt);alrtInt=null;}
+
+let spdBeepDone=false;
+let _lastBeepAt=0;
+function beepSpeedOnce(){
+  const now=Date.now();
+  if(now-_lastBeepAt<1200) return;
+  _lastBeepAt=now;
+  beepSpeed();
+}
+async function beepSpeed(){
+  if(AL.Sound_enabled===false) return;
+  try{
+    const ac=gac();
+    if(ac.state==='suspended') await ac.resume();
+    const t=ac.currentTime;
+    [[880,0,.28],[1109,.3,.28],[880,.6,.28],[1109,.9,.28]].forEach(([f,st,d])=>{
+      const o=ac.createOscillator(),g=ac.createGain();
+      o.connect(g);g.connect(ac.destination);
+      o.frequency.value=f;o.type='sine';
+      g.gain.setValueAtTime(0,t+st);
+      g.gain.linearRampToValueAtTime(0.85,t+st+.02);
+      g.gain.linearRampToValueAtTime(0.85,t+st+d-.03);
+      g.gain.linearRampToValueAtTime(0,t+st+d);
+      o.start(t+st);o.stop(t+st+d);
+    });
+  }catch(e){}
+}
+
+function toggleSoundBtn(){
+  AL.Sound_enabled = !AL.Sound_enabled;
+  ls('al', AL);
+  const btn = document.getElementById('sndBtnTop');
+  if(btn){
+    btn.textContent = AL.Sound_enabled ? "Звук ВВІМК" : "Звук ВИМК";
+    btn.classList.toggle('err', !AL.Sound_enabled);
+  }
+}
+
+// РЕНДЕР КАРТИ ТА МАРШРУТІВ
+let fullMapObj=null;
+let fullMapMarker=null;
+let fullMapDark=false;
+
+function initFullMap(){
+  if(fullMapObj) return;
+  const container = document.getElementById('fullMapContainer');
+  if(!container || typeof L==='undefined') return;
+  
+  fullMapObj = L.map(container, {zoomControl:true, attributionControl:false}).setView([50.4501, 30.5234], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19
+  }).addTo(fullMapObj);
+
+  fullMapMarker = L.circleMarker([50.4501, 30.5234], {
+    radius: 8, color: '#000', weight: 2, fillColor: '#37e0e6', fillOpacity: 1
+  }).addTo(fullMapObj);
+}
+
+function openFullMapModal(){
+  document.getElementById('fullMapModal').classList.add('sh');
+  setTimeout(()=>{
+    initFullMap();
+    if(fullMapObj){
+      fullMapObj.invalidateSize();
+      if(_lastLat != null && _lastLon != null){
+        fullMapObj.setView([_lastLat, _lastLon], 15);
+        if(fullMapMarker) fullMapMarker.setLatLng([_lastLat, _lastLon]);
+      }
+    }
+  }, 100);
+}
+
+function closeFullMapModal(){
+  document.getElementById('fullMapModal').classList.remove('sh');
+}
+
+function toggleFullMapTheme(isDark){
+  fullMapDark = isDark;
+  const el = document.getElementById('fullMapContainer');
+  if(el) el.classList.toggle('map-theme-dark', isDark);
+}
+
+function updateFullMapTEng(val){
+  const badge = document.getElementById('fullMapTEngBadge');
+  if(!badge) return;
+  badge.textContent = `T_Eng: ${val}°C`;
+  const fv = parseFloat(val);
+  if(!isNaN(fv)){
+    if(fv >= AL.T_crit){
+      badge.style.color = 'var(--red)';
+      badge.style.borderColor = 'var(--red)';
+    } else if(fv >= AL.T_warn){
+      badge.style.color = 'var(--amber)';
+      badge.style.borderColor = 'var(--amber)';
+    } else {
+      badge.style.color = 'var(--cyan)';
+      badge.style.borderColor = 'var(--line)';
+    }
+  }
+}
+
+// ТРОЙНИЙ ТАП ДЛЯ КАРТИ
+function setupMapTileTap(tileEl){
+  let tapCount = 0;
+  let tapTimer = null;
+  tileEl.addEventListener('click', (e)=>{
+    tapCount++;
+    if(tapTimer) clearTimeout(tapTimer);
+    if(tapCount === 3){
+      tapCount = 0;
+      openFullMapModal();
+    } else {
+      tapTimer = setTimeout(()=>{ tapCount = 0; }, 400);
+    }
+  });
+}
+
+let lay = lg('layout') || [
+  {id:'m1', k:'MapTile', s:'s23'}
+];
+
+function ud(){
+  updateFullMapTEng(V.T_Eng);
+  if(_lastLat != null && _lastLon != null && fullMapObj && fullMapMarker){
+    fullMapMarker.setLatLng([_lastLat, _lastLon]);
+  }
+}
+
+function sht(msg){
+  const el = document.getElementById('ht');
+  if(!el) return;
+  el.textContent = msg;
+  el.classList.add('sh');
+  setTimeout(()=>el.classList.remove('sh'), 2500);
+}
+
+// ІНІЦІАЛІЗАЦІЯ І ЗАПУСК
+document.addEventListener('DOMContentLoaded', ()=>{
+  const sndBtn = document.getElementById('sndBtnTop');
+  if(sndBtn) sndBtn.textContent = AL.Sound_enabled ? "Звук ВВІМК" : "Звук ВИМК";
+});
+</script>
+</body>
+</html>
