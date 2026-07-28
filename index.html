@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>vRacer Dash Pro</title>
+<style>
+:root {
+  --bg: #000000; --panel: #0d0d0f; --line: rgba(255,255,255,0.12);
+  --text: #f2f2f0; --muted: #888; --cyan: #37e0e6; --amber: #ffb74d; --green: #4caf50; --red: #ff4d4d;
+  --purple: #a855f7;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+html, body { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+
+#map { position: fixed; inset: 0; z-index: 1; background-color: #f2efe9; }
+.leaflet-tile-pane { filter: contrast(115%) brightness(96%) saturate(85%) hue-rotate(-5deg); }
+
+/* ТИМЧАСОВА КНОПКА ЗМІНИ СЕРВІСУ */
+#engineSelectorBar {
+  position: fixed; top: max(10px, env(safe-area-inset-top)); left: 50%;
+  transform: translateX(-50%); z-index: 2500; background: rgba(20, 20, 25, 0.95);
+  border: 1px solid var(--purple); border-radius: 20px; padding: 4px 10px;
+  display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 15px rgba(168, 85, 247, 0.3);
+  backdrop-filter: blur(10px);
+}
+#engineSelectorBar label { font-size: 11px; font-weight: bold; color: var(--purple); text-transform: uppercase; }
+#engineSelect { background: #000; color: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 4px 8px; font-size: 12px; outline: none; font-weight: bold; }
+
+/* HUD */
+#hudPanel {
+  position: fixed; top: calc(max(12px, env(safe-area-inset-top)) + 40px); left: 10px; right: 10px; z-index: 2000;
+  background: rgba(13, 13, 15, 0.92); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 14px; display: none; justify-content: space-between; align-items: center; backdrop-filter: blur(8px);
+}
+.hud-instruction { font-size: 15px; font-weight: bold; color: var(--cyan); display: flex; align-items: center; gap: 8px; }
+.hud-speed { text-align: right; font-size: 11px; color: var(--muted); }
+.hud-speed-val { font-size: 18px; font-weight: bold; color: var(--amber); }
+
+/* ROUTE OVERLAY */
+#navOverlay {
+  position: fixed; bottom: max(12px, env(safe-area-inset-bottom)); left: 10px; right: 10px; z-index: 2000;
+  background: rgba(13, 13, 15, 0.94); border: 1px solid var(--line); border-radius: 14px;
+  padding: 12px; backdrop-filter: blur(10px); display: flex; flex-direction: column; gap: 8px;
+  max-height: 65vh; overflow-y: auto; transition: transform 0.3s ease, opacity 0.3s ease;
+}
+#navOverlay.hidden { transform: translateY(120%); opacity: 0; pointer-events: none; }
+
+.input-group { display: flex; flex-direction: column; gap: 6px; }
+.input-row { display: flex; gap: 6px; align-items: center; }
+.input-label { font-size: 11px; color: var(--muted); width: 45px; font-weight: bold; }
+input[type="text"], select {
+  flex: 1; background: #000; border: 1px solid var(--line); border-radius: 6px;
+  padding: 8px 10px; color: #fff; font-size: 13px; outline: none;
+}
+.icon-btn {
+  background: #1a1a1e; color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; width: 34px; height: 34px; display: flex; align-items: center;
+  justify-content: center; cursor: pointer; font-weight: bold; flex-shrink: 0;
+}
+.icon-btn.danger { color: var(--red); border-color: rgba(255,77,77,0.3); }
+
+button.action-btn { background: var(--cyan); color: #000; border: none; border-radius: 6px; padding: 10px 14px; font-weight: bold; font-size: 13px; cursor: pointer; }
+button.close-panel-btn { background: #222; color: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; font-weight: bold; font-size: 13px; cursor: pointer; }
+button.go-btn {
+  background: var(--green); color: #fff; border: none; border-radius: 6px;
+  padding: 12px 14px; font-weight: bold; font-size: 14px; cursor: pointer; margin-top: 4px;
+  display: none; box-shadow: 0 0 10px rgba(76,175,80,0.4);
+}
+
+.filters-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  background: rgba(255,255,255,0.03); padding: 8px; border-radius: 8px; border: 1px solid var(--line);
+}
+.filter-item { font-size: 11px; color: var(--text); display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.filter-item input { accent-color: var(--cyan); }
+
+.options-row { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+.bottom-controls {
+  position: fixed; bottom: max(15px, env(safe-area-inset-bottom)); right: 15px; z-index: 3000;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px; transition: transform 0.3s ease;
+}
+
+.floating-btn {
+  border: none; border-radius: 25px; padding: 12px 18px; font-weight: bold; font-size: 13px;
+  cursor: pointer; color: #fff; backdrop-filter: blur(6px); box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+}
+.icon-float-btn {
+  width: 44px; height: 44px; border-radius: 50%; background: rgba(13, 13, 15, 0.9);
+  border: 1px solid var(--line); color: #fff; font-size: 18px; display: flex;
+  align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+}
+.icon-float-btn.active-tracking { border-color: var(--cyan); color: var(--cyan); }
+.icon-float-btn.active-sound { border-color: var(--green); color: var(--green); }
+
+#toggleMenuBtn { background: #1a1a1e; border: 1px solid var(--line); display: none; }
+#stopNavBtn { background: var(--red); display: none; }
+
+.popup-btn {
+  display: block; width: 100%; margin: 4px 0; padding: 6px;
+  background: #222; color: #fff; border: 1px solid var(--line);
+  border-radius: 4px; font-size: 11px; cursor: pointer; text-align: center;
+}
+.popup-btn.primary { background: var(--cyan); color: #000; font-weight: bold; }
+.popup-btn.amber { background: var(--amber); color: #000; font-weight: bold; }
+</style>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+</head>
+<body>
+
+<div id="engineSelectorBar">
+  <label for="engineSelect">⚙️ Сервіс:</label>
+  <select id="engineSelect" onchange="onEngineChange()">
+    <option value="osrm">OSRM (За замовчуванням)</option>
+    <option value="ors">OpenRouteService (Точний найкоротший)</option>
+    <option value="graphhopper">Graphhopper (Альтернативний)</option>
+  </select>
+</div>
+
+<div id="hudPanel">
+  <div class="hud-instruction" id="hudTurnInfo"><span>🧭</span> <span>Рухайтесь за маршрутом</span></div>
+  <div class="hud-speed">Ліміт: <span class="hud-speed-val" id="hudLimit">--</span> км/год</div>
+</div>
+
+<div id="map"></div>
+
+<div class="bottom-controls" id="bottomControls">
+  <button class="icon-float-btn" id="voiceToggleBtn" onclick="toggleVoice()">🔇</button>
+  <button class="icon-float-btn active-tracking" id="centerGpsBtn" onclick="enableAutoTrackingAndCenter()">🎯</button>
+  <button class="floating-btn" id="toggleMenuBtn" onclick="openNavMenu()">🗺️ Маршрут</button>
+  <button class="floating-btn" id="stopNavBtn" onclick="stopActiveNavigation()">❌ Завершити</button>
+</div>
+
+<div id="navOverlay">
+  <div class="filters-grid">
+    <label class="filter-item"><input type="checkbox" id="avoidTolls"> 🆓 Без платних доріг</label>
+    <label class="filter-item"><input type="checkbox" id="shortestRoute"> 📏 Найкоротший шлях</label>
+    <label class="filter-item"><input type="checkbox" id="avoidUnpaved"> 🛣️ Тільки асфальт</label>
+    <label class="filter-item"><input type="checkbox" id="footMode"> 🚶 Пішохідний режим</label>
+    <label class="filter-item"><input type="checkbox" id="curvyMode"> 🏍️ Звивисті серпантини</label>
+    <label class="filter-item"><input type="checkbox" id="scenicMode"> 🏞️ Сценічний / Краєвиди</label>
+    <label class="filter-item"><input type="checkbox" id="noHighways"> 🏙️ Без швидкісних шосе</label>
+    <label class="filter-item"><input type="checkbox" id="bikeMode"> 🚲 Скутер / Мото режим</label>
+  </div>
+
+  <div class="input-group" id="waypointsContainer">
+    <div class="input-row">
+      <span class="input-label">Звідки:</span>
+      <input type="text" id="startInput" placeholder="Моє місцезнаходження (GPS)">
+    </div>
+    
+    <!-- Контейнер для додаткових зупинок -->
+    <div id="dynamicWaypoints"></div>
+
+    <div class="input-row" id="destRow">
+      <span class="input-label">Куди:</span>
+      <input type="text" id="destInput" placeholder="Адреса / Назва / Клік на карті">
+      <button class="icon-btn danger" onclick="resetRoute()" title="Скинути">❌</button>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 6px; margin-top: 4px;">
+    <!-- КНОПКА ДОДАТИ ЗУПИНКУ ПОВЕРНУТА -->
+    <button class="icon-btn" style="width: auto; padding: 0 10px; font-size: 11px; background: #2a2a30;" onclick="addWaypointInput()">+ Зупинка</button>
+    <button class="action-btn" style="flex: 1;" onclick="buildRoute()">Розрахувати 🔍</button>
+    <button class="close-panel-btn" onclick="closeNavMenu()">✕ Закрити</button>
+  </div>
+
+  <button class="go-btn" id="startDriveBtn" onclick="startDriveMode()">▶️ ПОЇХАЛИ (Почати навігацію)</button>
+  
+  <div class="options-row">
+    <span style="font-size: 11px; color: var(--muted);">Дистанція:</span>
+    <span id="distDisplay" style="color: var(--cyan); font-weight: bold;">-- км</span>
+  </div>
+</div>
+
+<script>
+let map, userMarker, routeLayer, pinnedMarker;
+let userCoords = [24.8787, 121.2115]; 
+let customStartCoords = null;
+let activeDestCoords = null;
+let currentSteps = [];
+let isDriveActive = false;
+let autoTracking = true;
+
+const VoiceGuidance = {
+  synth: window.speechSynthesis, enabled: false,
+  toggle() {
+    this.enabled = !this.enabled;
+    const btn = document.getElementById('voiceToggleBtn');
+    btn.innerText = this.enabled ? "🔊" : "🔇";
+    btn.classList.toggle('active-sound', this.enabled);
+  },
+  speak(text) {
+    if (!this.synth || !this.enabled) return;
+    this.synth.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'uk-UA';
+    this.synth.speak(utterance);
+  }
+};
+function toggleVoice() { VoiceGuidance.toggle(); }
+
+function initMap() {
+  map = L.map('map', { zoomControl: false, attributionControl: false }).setView(userCoords, 14);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+
+  userMarker = L.circleMarker(userCoords, { radius: 8, fillColor: '#2B80FF', color: '#ffffff', weight: 3, fillOpacity: 1 }).addTo(map);
+
+  map.on('click', function(e) {
+    if (!isDriveActive) setPinMarker(e.latlng.lat, e.latlng.lng);
+  });
+
+  adjustControlsPosition();
+}
+
+function adjustControlsPosition() {
+  const overlay = document.getElementById('navOverlay');
+  const controls = document.getElementById('bottomControls');
+  controls.style.transform = !overlay.classList.contains('hidden') ? `translateY(-${overlay.offsetHeight + 8}px)` : `translateY(0px)`;
+}
+
+function setPinMarker(lat, lng) {
+  if (pinnedMarker) map.removeLayer(pinnedMarker);
+  const popupContent = `
+    <div style="color:#000; font-size:12px; text-align:center;">
+      <b>📌 Обрана точка</b><br>
+      <button class="popup-btn" onclick="setAsStart(${lat}, ${lng})">🚩 Зробити Стартом</button>
+      <button class="popup-btn amber" onclick="addWaypointFromMap(${lat}, ${lng})">➕ Додати Зупинку</button>
+      <button class="popup-btn primary" onclick="setAsDest(${lat}, ${lng})">🏁 Зробити Фінішем</button>
+    </div>
+  `;
+  pinnedMarker = L.marker([lat, lng]).addTo(map).bindPopup(popupContent).openPopup();
+}
+
+function setAsStart(lat, lng) {
+  customStartCoords = [lat, lng];
+  document.getElementById('startInput').value = `${lat.toFixed(4)}, ${lng.toFixed(4)} (Карта)`;
+  map.closePopup();
+}
+
+function setAsDest(lat, lng) {
+  activeDestCoords = [lat, lng];
+  document.getElementById('destInput').value = `${lat.toFixed(4)}, ${lng.toFixed(4)} (Карта)`;
+  document.getElementById('destInput').dataset.lat = lat;
+  document.getElementById('destInput').dataset.lng = lng;
+  map.closePopup();
+}
+
+// Додавання зупинки вручну або з карти
+function addWaypointInput(value = '', coords = null) {
+  const container = document.getElementById('dynamicWaypoints');
+  const row = document.createElement('div');
+  row.className = 'input-row waypoint-row';
+  const index = container.children.length + 1;
+  row.style.marginTop = '4px';
+  row.innerHTML = `
+    <span class="input-label">Зупинка ${index}:</span>
+    <input type="text" class="wp-input" placeholder="Проміжна точка" value="${value}">
+    <button class="icon-btn danger" onclick="this.parentElement.remove(); adjustControlsPosition();">✕</button>
+  `;
+  if (coords) row.querySelector('.wp-input').dataset.coords = JSON.stringify(coords);
+  container.appendChild(row);
+  adjustControlsPosition();
+}
+
+function addWaypointFromMap(lat, lng) {
+  addWaypointInput(`${lat.toFixed(4)}, ${lng.toFixed(4)} (Карта)`, [lat, lng]);
+  map.closePopup();
+}
+
+function closeNavMenu() {
+  document.getElementById('navOverlay').classList.add('hidden');
+  adjustControlsPosition();
+  document.getElementById('toggleMenuBtn').style.display = isDriveActive ? 'none' : 'inline-block';
+}
+
+function openNavMenu() {
+  document.getElementById('navOverlay').classList.remove('hidden');
+  adjustControlsPosition();
+  document.getElementById('toggleMenuBtn').style.display = 'none';
+}
+
+function onEngineChange() { if (activeDestCoords) buildRoute(); }
+
+async function buildRoute() {
+  let start = userCoords;
+  const startVal = document.getElementById('startInput').value;
+  if (customStartCoords && startVal.includes('(Карта)')) start = customStartCoords;
+
+  let dest = activeDestCoords;
+  const destInput = document.getElementById('destInput');
+  if (destInput.dataset.lat && destInput.value.includes('(Карта)')) {
+    dest = [parseFloat(destInput.dataset.lat), parseFloat(destInput.dataset.lng)];
+  }
+
+  if (!dest) { alert('Вкажіть фініш'); return; }
+
+  let waypoints = [start];
+  document.querySelectorAll('.wp-input').forEach(el => {
+    if (el.dataset.coords) waypoints.push(JSON.parse(el.dataset.coords));
+  });
+  waypoints.push(dest);
+
+  const isShortest = document.getElementById('shortestRoute').checked;
+  const isFoot = document.getElementById('footMode').checked;
+  const isBike = document.getElementById('bikeMode').checked;
+
+  let profile = isFoot ? 'foot' : (isBike ? 'bike' : 'driving');
+  const coordsStr = waypoints.map(c => `${c[1]},${c[0]}`).join(';');
+  const url = `https://router.project-osrm.org/route/v1/${profile}/${coordsStr}?overview=full&geometries=geojson&steps=true`;
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.routes && data.routes.length > 0) {
+      const route = data.routes[0];
+      if (routeLayer) map.removeLayer(routeLayer);
+      routeLayer = L.geoJSON(route.geometry, { style: { color: '#a855f7', weight: 6 } }).addTo(map);
+      map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+      document.getElementById('distDisplay').innerText = `${(route.distance / 1000).toFixed(1)} км`;
+      document.getElementById('startDriveBtn').style.display = 'block';
+      adjustControlsPosition();
+    }
+  } catch(e) { alert('Помилка розрахунку'); }
+}
+
+function resetRoute() {
+  if (routeLayer) map.removeLayer(routeLayer);
+  if (pinnedMarker) map.removeLayer(pinnedMarker);
+  document.getElementById('dynamicWaypoints').innerHTML = '';
+  document.getElementById('startInput').value = '';
+  document.getElementById('destInput').value = '';
+  customStartCoords = null; activeDestCoords = null;
+  document.getElementById('distDisplay').innerText = '-- км';
+  document.getElementById('startDriveBtn').style.display = 'none';
+  adjustControlsPosition();
+}
+
+function enableAutoTrackingAndCenter() {
+  map.setView(userCoords, 16, { animate: true });
+}
+
+function startDriveMode() {
+  isDriveActive = true;
+  document.getElementById('hudPanel').style.display = 'flex';
+  document.getElementById('stopNavBtn').style.display = 'inline-block';
+  closeNavMenu();
+}
+
+function stopActiveNavigation() {
+  isDriveActive = false;
+  document.getElementById('hudPanel').style.display = 'none';
+  document.getElementById('stopNavBtn').style.display = 'none';
+  openNavMenu();
+}
+
+window.onload = function() {
+  initMap();
+  window.addEventListener('resize', adjustControlsPosition);
+};
+</script>
+</body>
+</html>
