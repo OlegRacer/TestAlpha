@@ -1,0 +1,58 @@
+/**
+ * ХАК 1: Змушуємо iOS WebKit / Bluefy розгортатися на весь екран (844px)
+ * за допомогою примусового мікроскролу та розблокування CSS-контейнера.
+ */
+
+(function initFullscreenHack() {
+  // 1. Додаємо необхідні CSS-стилі в head для розтягування макету
+  const style = document.createElement('style');
+  style.innerHTML = `
+    /* Дозволяємо сторінці мати мікро-скролл для спрацювання хаку */
+    html, body {
+      width: 100lvw !important; /* Намагаємося брати Large Viewport (844px) */
+      min-height: 100.1vh !important; /* 100.1% змушує браузер "думати", що є скролл */
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch; /* Гладкий скролл для iOS */
+    }
+  `;
+  document.head.appendChild(style);
+
+  // 2. Функція виконання мікроскролу (зсув на 1 піксель)
+  function triggerFullscreenScroll() {
+    // Працюємо тільки якщо ми вгорі сторінки
+    if (window.scrollY === 0) {
+      window.scrollTo({
+        top: 1,
+        behavior: 'instant' // Миттєве зміщення без анімації
+      });
+    }
+  }
+
+  // 3. Спроба 1: Одразу після завантаження DOM
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(triggerFullscreenScroll, 50);
+  });
+
+  // 4. Спроба 2: Після повного завантаження ресурсів (стилі, картинки)
+  window.addEventListener('load', () => {
+    setTimeout(triggerFullscreenScroll, 100);
+    setTimeout(triggerFullscreenScroll, 300); // Повторний таймер на випадок затримки Bluefy
+  });
+
+  // 5. Спроба 3: При першому дотику користувача до екрана
+  // (Оскільки iOS часто блокує скролл з JS до першої взаємодії)
+  function handleFirstTouch() {
+    triggerFullscreenScroll();
+    // Видаляємо обробник після першого спрацьовування, щоб не спамити
+    window.removeEventListener('touchstart', handleFirstTouch);
+  }
+
+  window.addEventListener('touchstart', handleFirstTouch, { passive: true });
+
+  // 6. Спроба 4: При зміні орієнтації (якщо повернули екран)
+  window.addEventListener('orientationchange', () => {
+    setTimeout(triggerFullscreenScroll, 200);
+  });
+})();
