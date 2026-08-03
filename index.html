@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Пошук TPMS датчиків Yamaha</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .search-container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+        }
+
+        h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            border-color: #d90429; /* Yamaha Red accent */
+        }
+
+        button {
+            padding: 12px 20px;
+            background-color: #d90429;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #b10320;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="search-container">
+        <h2>Пошук TPMS датчиків</h2>
+        
+        <!-- Форма перенаправляє запит у Google для пошуку -->
+        <form action="https://www.google.com/search" method="get" target="_blank" class="search-box">
+            <input 
+                type="text" 
+                name="q" 
+                value="TPMS датчик тиску Yamaha" 
+                placeholder="Введіть модель або артикул..." 
+                required>
+            <button type="submit">Шукати</button>
+        </form>
+    </div>
+
+</body>
+</html>
