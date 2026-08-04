@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>vRacer - Taiwan Scooter Test</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    
+    html, body { 
+      width: 100%; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+      background: #121212; color: #fff; 
+      overflow: auto; 
+      overscroll-behavior-y: auto; 
+    }
+
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; z-index: 1; background: #121212; }
+
+    /* ── Верхня Панель HUD ── */
+    .top-panel {
+      position: absolute; top: 12px; left: 12px; right: 12px; z-index: 1000;
+      display: flex; gap: 6px; flex-wrap: wrap; background: rgba(20,20,20,0.92);
+      padding: 8px; border-radius: 12px; backdrop-filter: blur(8px); border: 1px solid #333;
+      align-items: center;
+    }
+
+    .btn {
+      background: #2a2a2a; color: #fff; border: 1px solid #444; padding: 6px 10px;
+      border-radius: 8px; font-weight: 600; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px;
+    }
+    .btn:active, .btn.active { background: #37e0e6; color: #000; border-color: #37e0e6; }
+    .btn-scooter { background: #e65100; border-color: #ff9800; }
+    .btn-scooter.active { background: #ff9800; color: #000; }
+    .btn-gps { background: #0288d1; border-color: #03a9f4; }
+    .btn-gmaps { background: #4285F4; border-color: #1a73e8; }
+    
+    .btn-more { background: #333; font-size: 16px; padding: 4px 10px; border-radius: 8px; margin-left: auto; }
+
+    /* Модальне вікно налаштувань (3 точки) */
+    .modal-overlay {
+      position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.7); z-index: 2000; display: none;
+      align-items: center; justify-content: center; backdrop-filter: blur(5px);
+    }
+    .modal-card {
+      background: #1e1e1e; border: 1px solid #444; border-radius: 14px;
+      padding: 16px; width: 90%; max-width: 360px; display: flex; flex-direction: column; gap: 12px;
+    }
+    .modal-title { font-size: 16px; font-weight: bold; color: #37e0e6; display: flex; justify-content: space-between; align-items: center; }
+    .modal-close { cursor: pointer; font-size: 18px; color: #aaa; }
+    .input-group { display: flex; flex-direction: column; gap: 4px; }
+    .input-label { font-size: 11px; color: #aaa; }
+    .modal-input {
+      background: #111; border: 1px solid #444; color: #fff; padding: 8px;
+      border-radius: 6px; font-size: 12px; font-family: monospace;
+    }
+
+    /* Компактне меню тапу на карті */
+    .leaflet-popup-content-wrapper { background: rgba(25,25,25,0.95); border: 1px solid #444; border-radius: 10px; padding: 4px 8px; color: #fff; }
+    .leaflet-popup-content { margin: 6px 8px; }
+    .map-popup-menu { display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
+    .popup-btn {
+      background: #333; color: #fff; border: none; padding: 6px 8px;
+      border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; text-align: left;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .popup-btn:active { background: #37e0e6; color: #000; }
+
+    /* HUD Повороту */
+    .turn-hud {
+      position: absolute; top: 110px; left: 12px; z-index: 999;
+      background: rgba(0,0,0,0.85); border: 2px solid #37e0e6; padding: 8px 12px;
+      border-radius: 10px; display: flex; align-items: center; gap: 10px;
+    }
+    .turn-dist { font-size: 18px; font-weight: bold; color: #fff; }
+
+    /* Стилі маркера POI */
+    .poi-icon-box {
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.85); border: 1px solid #fff; border-radius: 50%;
+      font-size: 14px; box-shadow: 0 0 6px rgba(0,0,0,0.5);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Контейнер Карти -->
+  <div id="map"></div>
+
+  <!-- Верхня Панель -->
+  <div class="top-panel" id="topPanel">
+    <button class="btn btn-scooter active" id="btn249cc" onclick="toggleScooterMode()">🛵 249cc</button>
+    <button class="btn btn-gps" onclick="requestGPSLocation(true)">📍 GPS</button>
+    <button class="btn btn-gmaps" onclick="importFromClipboard()">📋 Гугл</button>
+    <button class="btn" onclick="fetchNearbyPOI('fuel')">⛽ АЗС</button>
+    <button class="btn" onclick="fetchNearbyPOI('shop')">🏪 7-11</button>
+    <button class="btn" onclick="buildFullRoute()" style="background:#2e7d32; border-color:#4caf50;">▶ Старт</button>
+    <button class="btn" onclick="clearAllWaypoints()" style="background:#c62828; border-color:#ef5350;">🗑</button>
+    <button class="btn btn-more" onclick="openSettingsModal()">⋮</button>
+  </div>
+
+  <!-- Модалка Налаштувань (3 точки) -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal-card">
+      <div class="modal-title">
+        <span>⚙️ Налаштування</span>
+        <span class="modal-close" onclick="closeSettingsModal()">✕</span>
+      </div>
+      <div class="input-group">
+        <label class="input-label">OpenRouteService API Key:</label>
+        <input type="text" id="orsKeyInput" class="modal-input" placeholder="Введіть ваш ORS Key">
+      </div>
+      <div class="input-group">
+        <label class="input-label">Маршрутизатор:</label>
+        <select id="routerEngineSelect" class="modal-input">
+          <option value="osrm">OSRM Public (Без ключа)</option>
+          <option value="ors">OpenRouteService (ORS API)</option>
+        </select>
+      </div>
+      <button class="btn" onclick="saveSettings()" style="background:#37e0e6; color:#000; justify-content:center; padding:10px;">Зберегти</button>
+    </div>
+  </div>
+
+  <!-- HUD Повороту -->
+  <div class="turn-hud" id="turnHud" style="display: none;">
+    <div class="turn-dist" id="turnDist">--- км</div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    let map, userMarker;
+    let _lastLat = 25.0330, _lastLon = 121.5654;
+    let isGpsCenteredOnce = false;
+    
+    let startPoint = null, waypoints = [], endPoint = null;
+    let routePolyline = null, waypointMarkers = [];
+    let poiMarkers = [];
+    let isScooterMode249 = true;
+
+    const lg = k => localStorage.getItem(k);
+    const ls = (k, v) => localStorage.setItem(k, v);
+
+    function initMap() {
+      try {
+        map = L.map('map', { zoomControl: false }).setView([_lastLat, _lastLon], 14);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+          maxZoom: 19, attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        userMarker = L.marker([_lastLat, _lastLon], {
+          icon: L.divIcon({
+            html: `<div style="background:#00e5ff;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 8px #00e5ff;"></div>`,
+            className: 'user-gps-icon', iconSize: [18, 18]
+          })
+        }).addTo(map);
+
+        map.on('click', onMapTap);
+        loadSettings();
+
+        requestGPSLocation(true);
+        startGpsWatch();
+
+        setTimeout(() => { map.invalidateSize(); }, 500);
+      } catch(e) {
+        console.error("Map init error:", e);
+      }
+    }
+
+    // ── GPS LOGIC ─────────────────────────────────────────────────────────
+    function requestGPSLocation(shouldFly = false) {
+      if (!navigator.geolocation) { alert("GPS не підтримується."); return; }
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          _lastLat = pos.coords.latitude;
+          _lastLon = pos.coords.longitude;
+          if (userMarker) userMarker.setLatLng([_lastLat, _lastLon]);
+
+          if (shouldFly || !isGpsCenteredOnce) {
+            map.flyTo([_lastLat, _lastLon], 16, { animate: true });
+            isGpsCenteredOnce = true;
+          }
+        },
+        (err) => { if (err.code === 1) alert("Надайте дозвіл на доступ до GPS!"); },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+
+    function startGpsWatch() {
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(
+          (pos) => {
+            _lastLat = pos.coords.latitude;
+            _lastLon = pos.coords.longitude;
+            if (userMarker) userMarker.setLatLng([_lastLat, _lastLon]);
+          },
+          (err) => console.warn("Watch err:", err),
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
+        );
+      }
+    }
+
+    // ── ІМПОРТ З GOOGLE MAPS З БУФЕРА ОБМІНУ (ПОВНЕ ПОКРАЩЕННЯ) ──────────────
+    async function importFromClipboard() {
+      let text = "";
+      try {
+        text = await navigator.clipboard.readText();
+      } catch (err) {
+        text = prompt("Вставте посилання з Google Maps вручну:");
+      }
+
+      if (!text) return;
+
+      // 1. Витягуємо URL Google Maps із тексту/bplist
+      const urlMatch = text.match(/https?:\/\/(maps\.app\.goo\.gl|goo\.gl|www\.google\.[a-z.]+\/maps)[^\s"'\\]+/i);
+      
+      if (!urlMatch) {
+        alert("У буфері обміну не знайдено посилання Google Maps.");
+        return;
+      }
+
+      let rawUrl = urlMatch[0];
+      let pageText = rawUrl;
+
+      // 2. Якщо це коротке посилання (maps.app.goo.gl), завантажуємо вміст через CORS-проксі
+      if (rawUrl.includes('goo.gl') || rawUrl.includes('maps.app')) {
+        try {
+          const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(rawUrl)}`;
+          const res = await fetch(proxyUrl);
+          pageText = res.url + " " + (await res.text()); // Об'єднуємо кінцевий URL і HTML-код сторінки
+        } catch (e) {
+          console.warn("Proxy error:", e);
+        }
+      }
+
+      // 3. Шукаємо всі можливі варіанти координат у тексті
+      // Варіант A: Стандартні ll/center/destination у форматі 25.0330,121.5654
+      const coordRegex = /(-?\d+\.\d{3,}),\s*(-?\d+\.\d{3,})/g;
+      const matches = [...pageText.matchAll(coordRegex)];
+
+      let foundCoords = [];
+
+      for (let m of matches) {
+        let lat = parseFloat(m[1]);
+        let lon = parseFloat(m[2]);
+
+        // Валідація географічних діапазонів
+        if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+          // Відсіюємо дефолтні гео-межі Google Maps (0,0 або системні зміщення)
+          if (Math.abs(lat) > 0.001 && Math.abs(lon) > 0.001) {
+            foundCoords.push([lat, lon]);
+          }
+        }
+      }
+
+      if (foundCoords.length >= 2) {
+        startPoint = foundCoords[0];
+        endPoint = foundCoords[1];
+        renderWaypointMarkers();
+        buildFullRoute();
+      } else if (foundCoords.length === 1) {
+        startPoint = [_lastLat, _lastLon];
+        endPoint = foundCoords[0];
+        renderWaypointMarkers();
+        buildFullRoute();
+      } else {
+        alert("Не вдалося розпізнати координати з цього посилання.");
+      }
+    }
+
+    // ── ПОШУК POI (АЗС ТА 7-ELEVEN) ───────────────────────────────────────
+    async function fetchNearbyPOI(type) {
+      clearPoiMarkers();
+      const center = map.getCenter();
+      const radius = 3000;
+
+      let queryFilter = '';
+      let emoji = '';
+
+      if (type === 'fuel') {
+        queryFilter = `node["amenity"="fuel"](around:${radius},${center.lat},${center.lng});`;
+        emoji = '⛽';
+      } else if (type === 'shop') {
+        queryFilter = `node["shop"="convenience"](around:${radius},${center.lat},${center.lng});`;
+        emoji = '🏪';
+      }
+
+      const overpassUrl = `https://overpass-api.de/api/interpreter?data=[out:json];${queryFilter}out body 30;`;
+
+      try {
+        const response = await fetch(overpassUrl);
+        const data = await response.json();
+
+        if (!data.elements || data.elements.length === 0) {
+          alert(`Поруч (${radius/1000} км) нічого не знайдено.`);
+          return;
+        }
+
+        data.elements.forEach(el => {
+          const name = el.tags.name || (type === 'fuel' ? 'АЗС' : 'Магазин');
+          const marker = L.marker([el.lat, el.lon], {
+            icon: L.divIcon({
+              html: `<div class="poi-icon-box">${emoji}</div>`,
+              className: 'poi-marker',
+              iconSize: [26, 26]
+            })
+          }).addTo(map);
+
+          marker.bindPopup(`<b>${name}</b><br><button class="popup-btn" style="margin-top:6px;" onclick="setRoutePoint('end', ${el.lat}, ${el.lon})">🔴 Маршрут сюди</button>`);
+          poiMarkers.push(marker);
+        });
+
+      } catch (err) {
+        console.error("POI Fetch Error:", err);
+        alert("Помилка завантаження POI. Спробуйте ще раз.");
+      }
+    }
+
+    function clearPoiMarkers() {
+      poiMarkers.forEach(m => map.removeLayer(m));
+      poiMarkers = [];
+    }
+
+    // ── НАЛАШТУВАННЯ ТА ORS ──────────────────────────────────────────────
+    function openSettingsModal() { document.getElementById('settingsModal').style.display = 'flex'; }
+    function closeSettingsModal() { document.getElementById('settingsModal').style.display = 'none'; }
+
+    function loadSettings() {
+      document.getElementById('orsKeyInput').value = lg('orsKey') || '';
+      document.getElementById('routerEngineSelect').value = lg('routerEngine') || 'osrm';
+    }
+
+    function saveSettings() {
+      ls('orsKey', document.getElementById('orsKeyInput').value.trim());
+      ls('routerEngine', document.getElementById('routerEngineSelect').value);
+      closeSettingsModal();
+      alert('Збережено!');
+    }
+
+    // ── МЕНЮ ТАПУ НА КАРТІ ────────────────────────────────────────────────
+    function onMapTap(e) {
+      const { lat, lng } = e.latlng;
+      const popupContent = document.createElement('div');
+      popupContent.className = 'map-popup-menu';
+      popupContent.innerHTML = `
+        <button class="popup-btn" onclick="setRoutePoint('start', ${lat}, ${lng})"><span style="color:#4caf50">🟢</span> Старт</button>
+        <button class="popup-btn" onclick="setRoutePoint('via', ${lat}, ${lng})"><span style="color:#ffeb3b">🟡</span> Проміжна</button>
+        <button class="popup-btn" onclick="setRoutePoint('end', ${lat}, ${lng})"><span style="color:#f44336">🔴</span> Фініш</button>
+      `;
+      L.popup({ closeButton: false, offset: [0, -5] }).setLatLng(e.latlng).setContent(popupContent).openOn(map);
+    }
+
+    function setRoutePoint(type, lat, lng) {
+      map.closePopup();
+      if (type === 'start') startPoint = [lat, lng];
+      else if (type === 'via') waypoints.push([lat, lng]);
+      else if (type === 'end') endPoint = [lat, lng];
+      renderWaypointMarkers();
+    }
+
+    function renderWaypointMarkers() {
+      waypointMarkers.forEach(m => map.removeLayer(m));
+      waypointMarkers = [];
+      if (startPoint) waypointMarkers.push(L.marker(startPoint, { icon: createColorIcon('#4caf50', 'S') }).addTo(map));
+      waypoints.forEach((pt, idx) => waypointMarkers.push(L.marker(pt, { icon: createColorIcon('#ffeb3b', idx + 1) }).addTo(map)));
+      if (endPoint) waypointMarkers.push(L.marker(endPoint, { icon: createColorIcon('#f44336', 'F') }).addTo(map));
+    }
+
+    function createColorIcon(color, text) {
+      return L.divIcon({
+        html: `<div style="background:${color};color:#000;font-weight:bold;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;font-size:11px;">${text}</div>`,
+        className: 'wp-icon', iconSize: [22, 22]
+      });
+    }
+
+    function clearAllWaypoints() {
+      startPoint = null; waypoints = []; endPoint = null;
+      if (routePolyline) map.removeLayer(routePolyline);
+      clearPoiMarkers();
+      renderWaypointMarkers();
+      document.getElementById('turnHud').style.display = 'none';
+    }
+
+    function toggleScooterMode() {
+      isScooterMode249 = !isScooterMode249;
+      const btn = document.getElementById('btn249cc');
+      btn.classList.toggle('active', isScooterMode249);
+      btn.innerHTML = isScooterMode249 ? '🛵 249cc' : '🚗 Авто';
+    }
+
+    // ── МАРШРУТИЗАЦІЯ ────────────────────────────────────────────────────
+    async function buildFullRoute() {
+      const pStart = startPoint || [_lastLat, _lastLon];
+      if (!endPoint) { 
+        alert('Оберіть пункт призначення!'); 
+        return; 
+      }
+
+      const allPts = [pStart, ...waypoints, endPoint];
+      const engine = lg('routerEngine') || 'osrm';
+      const orsKey = lg('orsKey') || '';
+
+      let coords = null, distMeters = 0;
+
+      if (engine === 'ors' && orsKey) {
+        const bodyQuery = {
+          coordinates: allPts.map(p => [p[1], p[0]]),
+          preference: "recommended"
+        };
+        if (isScooterMode249) {
+          bodyQuery.options = { avoid_features: ["highways", "tollways", "ferries"] };
+        }
+
+        try {
+          const res = await fetch(`https://api.openrouteservice.org/v2/directions/driving-car/geojson`, {
+            method: 'POST',
+            headers: { 'Authorization': orsKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify(bodyQuery)
+          });
+          const data = await res.json();
+          if (data.features && data.features[0]) {
+            coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
+            distMeters = data.features[0].properties.summary.distance;
+          }
+        } catch(e) { 
+          console.error('ORS Error:', e); 
+        }
+      }
+
+      if (!coords) {
+        const coordStr = allPts.map(p => `${p[1]},${p[0]}`).join(';');
+        const url = `https://router.project-osrm.org/route/v1/driving/${coordStr}?overview=full&geometries=geojson`;
+
+        try {
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data.code === 'Ok' && data.routes && data.routes[0]) {
+            coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+            distMeters = data.routes[0].distance;
+          } else {
+            alert('OSRM не зміг знайти проїзд між цими точками.');
+          }
+        } catch (e) { 
+          alert('Не вдалося з’єднатися з сервером OSRM.'); 
+        }
+      }
+
+      if (coords) {
+        if (routePolyline) map.removeLayer(routePolyline);
+        routePolyline = L.polyline(coords, { color: '#37e0e6', weight: 6, opacity: 0.9 }).addTo(map);
+        map.fitBounds(routePolyline.getBounds(), { padding: [40, 40] });
+
+        document.getElementById('turnHud').style.display = 'flex';
+        document.getElementById('turnDist').textContent = `${(distMeters / 1000).toFixed(1)} км`;
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', initMap);
+  </script>
+</body>
+</html>
