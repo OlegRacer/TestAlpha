@@ -1,0 +1,50 @@
+    // ── ІМПОРТ З GOOGLE MAPS З БУФЕРА ОБМІНУ (Підтримка iOS bplist00) ─────
+    async function importFromClipboard() {
+      let text = "";
+      try {
+        text = await navigator.clipboard.readText();
+      } catch (err) {
+        text = prompt("Вставте посилання з Google Maps вручну:");
+      }
+
+      if (!text) return;
+
+      // 1. Витягуємо чисте посилання Google Maps із будь-якого тексту чи бінарного сміття (bplist00)
+      const urlMatch = text.match(/https?:\/\/(maps\.app\.goo\.gl|goo\.gl|www\.google\.[a-z.]+\/maps)[^\s"'\\]+/i);
+      
+      if (!urlMatch) {
+        alert("У буфері обміну не знайдено посилання Google Maps.");
+        return;
+      }
+
+      let finalUrl = urlMatch[0];
+
+      // 2. Обробка коротких посилань (maps.app.goo.gl)
+      if (finalUrl.includes('goo.gl') || finalUrl.includes('maps.app')) {
+        try {
+          const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(finalUrl)}`;
+          const res = await fetch(proxyUrl);
+          finalUrl = res.url;
+        } catch (e) {
+          console.warn("Proxy redirect error:", e);
+        }
+      }
+
+      // 3. Витягуємо координати
+      const regex = /(-?\d+\.\d+),\s*(-?\d+\.\d+)/g;
+      const matches = [...finalUrl.matchAll(regex)];
+
+      if (matches.length >= 2) {
+        startPoint = [parseFloat(matches[0][1]), parseFloat(matches[0][2])];
+        endPoint = [parseFloat(matches[1][1]), parseFloat(matches[1][2])];
+        renderWaypointMarkers();
+        buildFullRoute();
+      } else if (matches.length === 1) {
+        startPoint = [_lastLat, _lastLon];
+        endPoint = [parseFloat(matches[0][1]), parseFloat(matches[0][2])];
+        renderWaypointMarkers();
+        buildFullRoute();
+      } else {
+        alert("Не вдалося витягти координати з розгорнутого посилання.");
+      }
+    }
