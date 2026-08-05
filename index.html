@@ -449,34 +449,38 @@
       document.getElementById('importModal').style.display = 'none';
     }
 
-    /* ── ОНОВЛЕНИЙ НАДІЙНИЙ ІМПОРТ З GOOGLE MAPS ────────────────── */
+    /* ── ОНОВЛЕНИЙ НАДІЙНИЙ ІМПОРТ З GOOGLE MAPS З ОЧИЩЕННЯМ BPLIST ── */
     async function processImportModal() {
       const inputEl = document.getElementById('gmapsUrlInput');
-      const text = inputEl.value.trim();
-      if (!text) return;
+      let rawText = inputEl.value;
+      if (!rawText) return;
 
       const submitBtn = document.getElementById('btnImportSubmit');
       submitBtn.textContent = '⏳ Пошук координат...';
       submitBtn.disabled = true;
 
       try {
-        // 1. Спроба знайти координати прямо у введеному тексті
-        let coords = extractCoordsFromText(text);
+        // 1. Очищаємо текст від bplist00 та системного сміття iOS/macOS
+        const urlMatch = rawText.match(/https?:\/\/[^\s"'\\]+/i);
+        let targetUrl = urlMatch ? urlMatch[0] : rawText.trim();
 
-        // 2. Якщо це коротке посилання (maps.app.goo.gl, goo.gl, bit.ly тощо)
-        if (coords.length === 0 && (text.includes('http://') || text.includes('https://'))) {
-          const urlMatch = text.match(/https?:\/\/[^\s"'\\]+/i);
-          if (urlMatch) {
-            const originalUrl = urlMatch[0];
-            
-            // Розпаковуємо коротке посилання у повне
-            const fullUrl = await resolveShortUrl(originalUrl);
-            coords = extractCoordsFromText(fullUrl);
+        // 2. Спроба витягти координати безпосередньо
+        let coords = extractCoordsFromText(targetUrl);
 
-            // Якщо в URL немає числових координат, але є назва локації / місця
-            if (coords.length === 0) {
-              const placeCoords = await geocodeLocationFromUrl(fullUrl || originalUrl);
-              if (placeCoords) coords = [placeCoords];
+        // 3. Якщо це коротше посилання (maps.app.goo.gl, goo.gl тощо)
+        if (coords.length === 0 && (targetUrl.includes('http://') || targetUrl.includes('https://'))) {
+          // Розпаковуємо коротке посилання
+          const resolvedUrls = await resolveShortUrlMultilevel(targetUrl);
+
+          for (const urlStr of resolvedUrls) {
+            coords = extractCoordsFromText(urlStr);
+            if (coords.length > 0) break;
+
+            // Спроба геокодування назви місця з URL (/place/Назва)
+            const placeCoords = await geocodeLocationFromUrl(urlStr);
+            if (placeCoords) {
+              coords = [placeCoords];
+              break;
             }
           }
         }
@@ -485,50 +489,57 @@
           closeImportModal();
           applyCoordinates(coords);
         } else {
-          alert("Не вдалося витягти координати. Спробуйте вставити повне посилання з браузера або скопіювати точні координати.");
+          alert("Не вдалося витягти координати з посилання.");
         }
       } catch (err) {
-        console.error("Помилка обробки:", err);
-        alert("Помилка під час обробки посилання.");
+        console.error("Помилка імпорту:", err);
+        alert("Виникла помилка під час розпакування посилання.");
       } finally {
         submitBtn.textContent = 'OK';
         submitBtn.disabled = false;
       }
     }
 
-    // Розпакування коротких посилань через безкоштовний unshorten API
-    async function resolveShortUrl(shortUrl) {
+    // Багаторівневий розпакувальник коротких URL через 3 незалежні сервіси
+    async function resolveShortUrlMultilevel(shortUrl) {
+      let results = [];
+
+      // Варіант 1: unshorten.me
       try {
         const res = await fetch(`https://unshorten.me/json/${encodeURIComponent(shortUrl)}`);
         if (res.ok) {
           const data = await res.json();
-          if (data && data.resolved_url) {
-            return data.resolved_url;
-          }
+          if (data && data.resolved_url) results.push(data.resolved_url);
         }
-      } catch (e) {
-        console.warn("Unshorten API error, trying backup...", e);
-      }
+      } catch (e) {}
 
-      // Резервний варіант через AllOrigins
+      // Варіант 2: corsproxy.io (для аналізу вмісту HTML / JS)
+      try {
+        const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(shortUrl)}`);
+        if (res.ok) {
+          if (res.url) results.push(res.url);
+          const htmlText = await res.text();
+          results.push(htmlText);
+        }
+      } catch (e) {}
+
+      // Варіант 3: api.allorigins.win
       try {
         const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(shortUrl)}`);
-        const data = await res.json();
-        if (data && data.contents) {
-          return data.contents;
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.contents) results.push(data.contents);
         }
-      } catch (e) {
-        console.error("Backup unshortener failed", e);
-      }
+      } catch (e) {}
 
-      return shortUrl;
+      results.push(shortUrl);
+      return results;
     }
 
-    // Геокодування назви місця через OpenStreetMap (Nominatim)
+    // Геокодування назви об'єкта через OpenStreetMap Nominatim
     async function geocodeLocationFromUrl(urlStr) {
       try {
         let query = '';
-        
         const placeMatch = urlStr.match(/\/maps\/place\/([^\/@?]+)/);
         if (placeMatch && placeMatch[1]) {
           query = decodeURIComponent(placeMatch[1].replace(/\+/g, ' '));
@@ -541,9 +552,7 @@
         if (data && data.length > 0) {
           return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
         }
-      } catch (e) {
-        console.warn("Geocoding failed", e);
-      }
+      } catch (e) {}
       return null;
     }
 
