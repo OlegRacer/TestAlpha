@@ -107,7 +107,7 @@
     <button class="btn btn-scooter active" id="btn249cc" onclick="toggleScooterMode()">🛵 249cc</button>
     <button class="btn btn-gps" onclick="requestGPSLocation(true)">📍 GPS</button>
     <button class="btn btn-gmaps" onclick="openImportModal()">📋 Гугл</button>
-    <button class="btn btn-camera" onclick="openGpxModal()">📷 GPX</button>
+    <button class="btn btn-camera" onclick="openGpxModal()">📷 GPX/CSV</button>
     <button class="btn" onclick="fetchNearbyPOI('fuel')">⛽ АЗС</button>
     <button class="btn" onclick="fetchNearbyPOI('shop')">🏪 7-11</button>
     <button class="btn" onclick="buildFullRoute()" style="background:#2e7d32; border-color:#4caf50;">▶ Старт</button>
@@ -130,18 +130,18 @@
     </div>
   </div>
 
-  <!-- Модальне вікно завантаження GPX Камер -->
+  <!-- Модальне вікно завантаження GPX / CSV Камер -->
   <div class="modal-overlay" id="gpxModal">
     <div class="modal-card">
       <div class="modal-title">
-        <span>📷 Завантажити GPX Камер</span>
+        <span>📷 Імпорт Камер (GPX / CSV)</span>
         <span class="modal-close" onclick="closeGpxModal()">✕</span>
       </div>
       <div class="input-group">
-        <label class="input-label">Оберіть GPX файл з камерами:</label>
-        <input type="file" id="gpxFileInput" accept=".gpx" class="modal-input">
+        <label class="input-label">Оберіть файл (.gpx або .csv):</label>
+        <input type="file" id="gpxFileInput" accept=".gpx, .csv, .txt" class="modal-input">
       </div>
-      <button class="btn" onclick="processGpxFile()" style="justify-content:center; background:#d32f2f; color:#fff; padding:10px;">Завантажити камери</button>
+      <button class="btn" onclick="processCameraFile()" style="justify-content:center; background:#d32f2f; color:#fff; padding:10px;">Завантажити камери</button>
     </div>
   </div>
 
@@ -253,7 +253,7 @@
       }
     }
 
-    /* ── ФУНКЦІЇ ДЛЯ МОДАЛКИ GPX ────────────────────────────────────── */
+    /* ── ФУНКЦІЇ ДЛЯ МОДАЛКИ GPX / CSV ────────────────────────────────── */
     function openGpxModal() {
       document.getElementById('gpxModal').style.display = 'flex';
     }
@@ -262,24 +262,127 @@
       document.getElementById('gpxModal').style.display = 'none';
     }
 
-    function processGpxFile() {
+    function processCameraFile() {
       const fileInput = document.getElementById('gpxFileInput');
       const file = fileInput.files[0];
 
       if (!file) {
-        alert("Будь ласка, виберіть GPX файл.");
+        alert("Будь ласка, виберіть файл (.gpx або .csv).");
         return;
       }
 
+      const fileName = file.name.toLowerCase();
       const reader = new FileReader();
+
       reader.onload = function(e) {
         const text = e.target.result;
-        parseAndDisplayGpxCameras(text);
+        if (fileName.endsWith('.csv') || fileName.endsWith('.txt')) {
+          parseAndDisplayCsvCameras(text);
+        } else {
+          parseAndDisplayGpxCameras(text);
+        }
         closeGpxModal();
       };
+
       reader.readAsText(file);
     }
 
+    /* ── ПАРСЕР CSV ФАЙЛІВ ────────────────────────────────────────────── */
+    function parseAndDisplayCsvCameras(csvText) {
+      const lines = csvText.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length === 0) {
+        alert("CSV файл порожній!");
+        return;
+      }
+
+      // Визначаємо роздільник (, або ; або \t)
+      const firstLine = lines[0];
+      let delimiter = ',';
+      if (firstLine.includes(';')) delimiter = ';';
+      else if (firstLine.includes('\t')) delimiter = '\t';
+
+      // Парсимо заголовки
+      const headers = firstLine.split(delimiter).map(h => h.trim().toLowerCase().replace(/^["']|["']$/g, ''));
+      
+      let latIdx = -1, lonIdx = -1, speedIdx = -1, nameIdx = -1, descIdx = -1;
+
+      headers.forEach((h, i) => {
+        if (['lat', 'latitude', 'y', 'lat_deg'].includes(h)) latIdx = i;
+        else if (['lon', 'lng', 'longitude', 'x', 'lon_deg'].includes(h)) lonIdx = i;
+        else if (['speed', 'maxspeed', 'limit', 'speedlimit', 'spd'].includes(h)) speedIdx = i;
+        else if (['name', 'title', 'id', 'label', 'type'].includes(h)) nameIdx = i;
+        else if (['desc', 'description', 'info', 'note'].includes(h)) descIdx = i;
+      });
+
+      // Якщо немає заголовків, пробуємо знайти за замовчуванням (0: lon, 1: lat, або 0: lat, 1: lon)
+      let startIndex = 1;
+      if (latIdx === -1 || lonIdx === -1) {
+        startIndex = 0; // немає заголовочного рядка
+        const parts0 = lines[0].split(delimiter);
+        if (parts0.length >= 2 && !isNaN(parseFloat(parts0[0])) && !isNaN(parseFloat(parts0[1]))) {
+          // за замовчуванням 0 -> lon, 1 -> lat (стандарт NDrive/Garmin) або навпаки
+          let v0 = parseFloat(parts0[0]);
+          let v1 = parseFloat(parts0[1]);
+          if (v0 > 40 && v0 < 180) { lonIdx = 0; latIdx = 1; } // Тайвань Lon ~121, Lat ~25
+          else { latIdx = 0; lonIdx = 1; }
+          if (parts0.length > 2) speedIdx = 2;
+          if (parts0.length > 3) nameIdx = 3;
+        } else {
+          alert("Не вдалося автоматично визначити колонки широт та довгот у CSV файлі.");
+          return;
+        }
+      }
+
+      cameraLayerGroup.clearLayers();
+      cameraMarkers = [];
+      let bounds = L.latLngBounds();
+
+      for (let i = startIndex; i < lines.length; i++) {
+        const cols = lines[i].split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''));
+        if (cols.length <= Math.max(latIdx, lonIdx)) continue;
+
+        let lat = parseFloat(cols[latIdx]);
+        let lon = parseFloat(cols[lonIdx]);
+
+        if (isNaN(lat) || isNaN(lon)) continue;
+
+        let speedText = speedIdx !== -1 && cols[speedIdx] ? cols[speedIdx] : "";
+        let nameText = nameIdx !== -1 && cols[nameIdx] ? cols[nameIdx] : "Камера";
+        let descText = descIdx !== -1 && cols[descIdx] ? cols[descIdx] : "";
+
+        // Форматування швидкості, якщо це просто число
+        if (speedText && !isNaN(speedText)) speedText = `${speedText} км/год`;
+
+        const marker = L.marker([lat, lon], {
+          icon: L.divIcon({
+            html: `<div class="camera-icon-box">📷</div>`,
+            className: 'camera-marker',
+            iconSize: [24, 24]
+          })
+        });
+
+        let popupContent = `<div style="font-size:12px;">`;
+        popupContent += `<b style="color:#f44336;">📷 Камера фіксації</b><br>`;
+        if (speedText) popupContent += `<span style="color:#ffeb3b; font-weight:bold;">⚡ Обмеження: ${speedText}</span><br>`;
+        if (nameText) popupContent += `<span style="color:#aaa;">${nameText}</span><br>`;
+        if (descText) popupContent += `<small style="color:#888;">${descText}</small>`;
+        popupContent += `</div>`;
+
+        marker.bindPopup(popupContent);
+        cameraLayerGroup.addLayer(marker);
+        cameraMarkers.push(marker);
+
+        bounds.extend([lat, lon]);
+      }
+
+      alert(`Успішно завантажено камер з CSV: ${cameraMarkers.length}`);
+
+      if (cameraMarkers.length > 0) {
+        map.fitBounds(bounds, { padding: [30, 30] });
+      }
+    }
+
+    /* ── ПАРСЕР GPX ФАЙЛІВ ────────────────────────────────────────────── */
     function parseAndDisplayGpxCameras(gpxXmlText) {
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(gpxXmlText, "text/xml");
@@ -290,10 +393,8 @@
         return;
       }
 
-      // Очищаємо попередні камери
       cameraLayerGroup.clearLayers();
       cameraMarkers = [];
-
       let bounds = L.latLngBounds();
 
       for (let i = 0; i < waypoints.length; i++) {
@@ -309,7 +410,6 @@
         let name = nameNode ? nameNode.textContent : "Камера";
         let desc = descNode ? descNode.textContent : "";
 
-        // Визначаємо maxspeed для відображення
         let speedMatch = desc.match(/maxspeed=(\d+)/);
         let speedText = speedMatch ? `${speedMatch[1]} км/год` : "";
 
@@ -335,7 +435,7 @@
         bounds.extend([lat, lon]);
       }
 
-      alert(`Успішно завантажено камер: ${cameraMarkers.length}`);
+      alert(`Успішно завантажено камер з GPX: ${cameraMarkers.length}`);
 
       if (cameraMarkers.length > 0) {
         map.fitBounds(bounds, { padding: [30, 30] });
