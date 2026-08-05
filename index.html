@@ -449,47 +449,34 @@
       document.getElementById('importModal').style.display = 'none';
     }
 
-    /* ── ОНОВЛЕНИЙ ІМПОРТ З КОРОТКИХ ПОСИЛАНЬ GOOGLE MAPS ────────────────── */
+    /* ── ОНОВЛЕНИЙ НАДІЙНИЙ ІМПОРТ З GOOGLE MAPS ────────────────── */
     async function processImportModal() {
-      const text = document.getElementById('gmapsUrlInput').value.trim();
+      const inputEl = document.getElementById('gmapsUrlInput');
+      const text = inputEl.value.trim();
       if (!text) return;
 
       const submitBtn = document.getElementById('btnImportSubmit');
-      submitBtn.textContent = '⏳ Розпаковка...';
+      submitBtn.textContent = '⏳ Пошук координат...';
       submitBtn.disabled = true;
 
       try {
+        // 1. Спроба знайти координати прямо у введеному тексті
         let coords = extractCoordsFromText(text);
 
-        // Якщо це коротке посилання (maps.app.goo.gl або goo.gl), розпаковуємо через CORS-проксі
-        if (coords.length === 0 && (text.includes('goo.gl') || text.includes('maps.app'))) {
+        // 2. Якщо це коротке посилання (maps.app.goo.gl, goo.gl, bit.ly тощо)
+        if (coords.length === 0 && (text.includes('http://') || text.includes('https://'))) {
           const urlMatch = text.match(/https?:\/\/[^\s"'\\]+/i);
           if (urlMatch) {
             const originalUrl = urlMatch[0];
             
-            // 1. Спроба через corsproxy.io
-            try {
-              const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(originalUrl)}`);
-              const html = await res.text();
-              coords = extractCoordsFromText(html);
-              if (coords.length === 0 && res.url) {
-                coords = extractCoordsFromText(res.url);
-              }
-            } catch (e) {
-              console.warn("Спроба corsproxy.io не вдалася, пробуємо allorigins...");
-            }
+            // Розпаковуємо коротке посилання у повне
+            const fullUrl = await resolveShortUrl(originalUrl);
+            coords = extractCoordsFromText(fullUrl);
 
-            // 2. Резервна спроба через api.allorigins.win
+            // Якщо в URL немає числових координат, але є назва локації / місця
             if (coords.length === 0) {
-              try {
-                const resAlt = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(originalUrl)}`);
-                const dataAlt = await resAlt.json();
-                if (dataAlt && dataAlt.contents) {
-                  coords = extractCoordsFromText(dataAlt.contents);
-                }
-              } catch (e) {
-                console.error("AllOrigins error:", e);
-              }
+              const placeCoords = await geocodeLocationFromUrl(fullUrl || originalUrl);
+              if (placeCoords) coords = [placeCoords];
             }
           }
         }
@@ -498,22 +485,72 @@
           closeImportModal();
           applyCoordinates(coords);
         } else {
-          alert("Не вдалося визначити координати з посилання.");
+          alert("Не вдалося витягти координати. Спробуйте вставити повне посилання з браузера або скопіювати точні координати.");
         }
       } catch (err) {
-        console.error("Помилка обробки посилання:", err);
-        alert("Виникла помилка під час обробки посилання.");
+        console.error("Помилка обробки:", err);
+        alert("Помилка під час обробки посилання.");
       } finally {
         submitBtn.textContent = 'OK';
         submitBtn.disabled = false;
       }
     }
 
+    // Розпакування коротких посилань через безкоштовний unshorten API
+    async function resolveShortUrl(shortUrl) {
+      try {
+        const res = await fetch(`https://unshorten.me/json/${encodeURIComponent(shortUrl)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.resolved_url) {
+            return data.resolved_url;
+          }
+        }
+      } catch (e) {
+        console.warn("Unshorten API error, trying backup...", e);
+      }
+
+      // Резервний варіант через AllOrigins
+      try {
+        const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(shortUrl)}`);
+        const data = await res.json();
+        if (data && data.contents) {
+          return data.contents;
+        }
+      } catch (e) {
+        console.error("Backup unshortener failed", e);
+      }
+
+      return shortUrl;
+    }
+
+    // Геокодування назви місця через OpenStreetMap (Nominatim)
+    async function geocodeLocationFromUrl(urlStr) {
+      try {
+        let query = '';
+        
+        const placeMatch = urlStr.match(/\/maps\/place\/([^\/@?]+)/);
+        if (placeMatch && placeMatch[1]) {
+          query = decodeURIComponent(placeMatch[1].replace(/\+/g, ' '));
+        }
+
+        if (!query) return null;
+
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        if (data && data.length > 0) {
+          return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+        }
+      } catch (e) {
+        console.warn("Geocoding failed", e);
+      }
+      return null;
+    }
+
     function extractCoordsFromText(str) {
       let results = [];
       if (!str) return results;
 
-      // Спеціальне декодування URL для закодованих символів (%213d, %2C тощо)
       try { str = decodeURIComponent(str); } catch(e) {}
 
       // Шаблон !3d25.1234!4d121.1234
