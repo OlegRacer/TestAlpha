@@ -263,18 +263,21 @@
             width: 100%;
             border-collapse: collapse;
             font-size: 0.85rem;
-            margin-top: 10px;
         }
 
         th, td {
             border: 1px solid var(--border-color);
             padding: 8px 10px;
             text-align: left;
+            white-space: nowrap;
         }
 
         th {
             background: #0f172a;
             color: var(--text-muted);
+            position: sticky;
+            top: 0;
+            z-index: 2;
         }
 
         .tab-content {
@@ -287,7 +290,10 @@
 
         .table-scroll {
             max-height: 450px;
-            overflow-y: auto;
+            overflow: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            margin-top: 10px;
         }
     </style>
 </head>
@@ -304,7 +310,7 @@
         <p class="subtitle" id="header-subtitle">Розбивайте великий CSV на фрагменти для чату, вставляйте відповіді та експортуйте єдиний підсумковий report.csv</p>
     </header>
 
-    <!-- ВКЛАДКА 1: ОБРОБКА ПАКУНКІВ (ОРИГІНАЛЬНА БАЗА ТА КОРЕКТНИЙ СТАН) -->
+    <!-- ВКЛАДКА 1: ОБРОБКА ПАКУНКІВ -->
     <div id="batch-tab" class="tab-content active">
         <div class="stats-bar">
             <div class="stat-box">
@@ -372,31 +378,33 @@
                     </p>
                     <button class="btn btn-green" onclick="exportMergedCSV()">Завантажити report.csv</button>
 
-                    <div style="margin-top: 16px; overflow-x: auto;">
+                    <div style="margin-top: 16px;">
                         <label>Попередній перегляд зібраних даних:</label>
-                        <table id="preview-table">
-                            <thead>
-                                <tr>
-                                    <th>status</th>
-                                    <th>brand</th>
-                                    <th>name</th>
-                                    <th>lat</th>
-                                    <th>lon</th>
-                                    <th>hours</th>
-                                    <th>toilet</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Дані відсутні</td></tr>
-                            </tbody>
-                        </table>
+                        <div class="table-scroll">
+                            <table id="preview-table">
+                                <thead>
+                                    <tr>
+                                        <th>status</th>
+                                        <th>brand</th>
+                                        <th>name</th>
+                                        <th>lat</th>
+                                        <th>lon</th>
+                                        <th>hours</th>
+                                        <th>toilet</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Дані відсутні</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- ВКЛАДКА 2: РЕДАКТОР СТАРОЇ БАЗИ (ПОВНІСТЮ ОКРЕМИЙ МОДУЛЬ) -->
+    <!-- ВКЛАДКА 2: РЕДАКТОР СТАРОЇ БАЗИ -->
     <div id="editor-tab" class="tab-content">
         <div class="card">
             <div class="card-title">Завантаження та перегляд старої бази</div>
@@ -435,13 +443,11 @@
     <div class="toast" id="toast-msg">Скопійовано!</div>
 
     <script>
-        // === СТАН ОСНОВНОГО ДОДАТКУ (НЕ ЗМІНЮЄТЬСЯ І ЗБЕРІГАЄ ВАШУ ПОТОЧНУ РОБОТУ) ===
         let appState = {
             chunks: [],
             activeChunkIndex: 0
         };
 
-        // === СТАН РЕДАКТОРА СТАРОЇ БАЗИ (ІЗОЛЬОВАНИЙ) ===
         let oldState = {
             headers: [],
             rows: [],
@@ -449,7 +455,6 @@
         };
 
         window.onload = function() {
-            // Завантаження основного стану
             const saved = localStorage.getItem('csv_batch_app_state');
             if (saved) {
                 try {
@@ -465,7 +470,6 @@
                 }
             }
 
-            // Завантаження стану старої бази
             const oldSaved = localStorage.getItem('csv_old_editor_state');
             if (oldSaved) {
                 try {
@@ -661,7 +665,7 @@ ${chunk.data}
                 return;
             }
 
-            tbody.innerHTML = rows.slice(0, 10).map(rowStr => {
+            tbody.innerHTML = rows.map(rowStr => {
                 const cols = rowStr.split(',').map(c => c.trim().replace(/^"/, '').replace(/"$/, ''));
                 return `
                     <tr>
@@ -685,17 +689,22 @@ ${chunk.data}
             }
 
             const header = "status,brand,name,lat,lon,hours,toilet";
-            const fullCSV = [header, ...rows].join('\n');
+            const fullCSV = [header, ...rows].join('\r\n');
 
             const blob = new Blob(["\uFEFF" + fullCSV], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", "report.csv");
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            showToast("report.csv завантажено!");
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                const link = document.createElement("a");
+                link.setAttribute("href", e.target.result);
+                link.setAttribute("download", "report.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showToast("report.csv завантажено!");
+            };
+
+            reader.readAsDataURL(blob);
         }
 
         function resetAllData() {
@@ -710,7 +719,7 @@ ${chunk.data}
             }
         }
 
-        // === ФУНКЦІОНАЛ ДЛЯ РЕДАКТОРА СТАРОЇ БАЗИ ===
+        // === РЕДАКТОР СТАРОЇ БАЗИ ===
         function loadOldCSV() {
             const fileInput = document.getElementById('old-csv-file-input');
             if (!fileInput.files || fileInput.files.length === 0) {
@@ -773,7 +782,7 @@ ${chunk.data}
                 return;
             }
 
-            tbody.innerHTML = oldState.filteredIndices.slice(0, 100).map(idx => {
+            tbody.innerHTML = oldState.filteredIndices.map(idx => {
                 const rowStr = oldState.rows[idx];
                 const cols = rowStr.split(',').map(c => c.trim().replace(/^"/, '').replace(/"$/, ''));
                 return `
@@ -803,7 +812,7 @@ ${chunk.data}
                 selectedData.push(oldState.rows[idx]);
             });
 
-            const textToCopy = [oldState.headers.join(','), ...selectedData].join('\n');
+            const textToCopy = [oldState.headers.join(','), ...selectedData].join('\r\n');
             navigator.clipboard.writeText(textToCopy);
             showToast("Вибрані рядки скопійовано!");
         }
@@ -815,7 +824,7 @@ ${chunk.data}
             }
 
             const filteredData = oldState.filteredIndices.map(idx => oldState.rows[idx]);
-            const textToCopy = [oldState.headers.join(','), ...filteredData].join('\n');
+            const textToCopy = [oldState.headers.join(','), ...filteredData].join('\r\n');
             navigator.clipboard.writeText(textToCopy);
             showToast("Усі відфільтровані рядки скопійовано!");
         }
