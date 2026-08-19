@@ -39,10 +39,40 @@
             padding-bottom: 16px;
         }
 
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
         h1 {
             font-size: 1.8rem;
             color: var(--accent-blue);
-            margin-bottom: 8px;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+        }
+
+        .tab-btn {
+            background: #0f172a;
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            background: var(--accent-blue);
+            color: #0f172a;
+            border-color: var(--accent-blue);
         }
 
         p.subtitle {
@@ -86,7 +116,7 @@
             margin-bottom: 6px;
         }
 
-        input[type="file"], input[type="number"], select {
+        input[type="file"], input[type="number"], input[type="text"], select {
             width: 100%;
             padding: 10px;
             background: #0f172a;
@@ -119,14 +149,6 @@
         .btn-green {
             background-color: var(--accent-green);
             color: #ffffff;
-        }
-
-        .btn-red {
-            background-color: var(--accent-red);
-            color: #ffffff;
-            padding: 4px 8px;
-            font-size: 0.75rem;
-            width: auto;
         }
 
         .btn-outline {
@@ -237,22 +259,11 @@
             z-index: 1000;
         }
 
-        .toast-error {
-            background: var(--accent-red) !important;
-        }
-
-        .table-scroll-container {
-            max-height: 400px;
-            overflow-y: auto;
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            margin-top: 8px;
-        }
-
         table {
             width: 100%;
             border-collapse: collapse;
             font-size: 0.85rem;
+            margin-top: 10px;
         }
 
         th, td {
@@ -264,101 +275,105 @@
         th {
             background: #0f172a;
             color: var(--text-muted);
-            position: sticky;
-            top: 0;
-            z-index: 10;
         }
 
-        td[contenteditable="true"] {
-            outline: 1px dashed var(--accent-blue);
-            background: rgba(56, 189, 248, 0.05);
-        }
-        td[contenteditable="true"]:focus {
-            outline: 2px solid var(--accent-blue);
-            background: #0f172a;
+        .tab-content {
+            display: none;
         }
 
-        .swipe-row {
-            transition: transform 0.2s ease;
+        .tab-content.active {
+            display: block;
+        }
+
+        .table-scroll {
+            max-height: 450px;
+            overflow-y: auto;
         }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>CSV Batch Processing Hub</h1>
-        <p class="subtitle">Розбивайте великий CSV на фрагменти для чату, вставляйте відповіді та експортуйте єдиний підсумковий report.csv</p>
+        <div class="header-top">
+            <h1>CSV Batch Processing Hub</h1>
+            <div class="nav-tabs">
+                <button class="tab-btn active" onclick="switchTab('batch-tab')">Обробка пакунків</button>
+                <button class="tab-btn" onclick="switchTab('editor-tab')">Редактор старого CSV</button>
+            </div>
+        </div>
+        <p class="subtitle" id="header-subtitle">Розбивайте великий CSV на фрагменти для чату, вставляйте відповіді та експортуйте єдиний підсумковий report.csv</p>
     </header>
 
-    <div class="stats-bar">
-        <div class="stat-box">
-            <div class="stat-value" id="stat-total-chunks">0</div>
-            <div class="stat-label">Всього пакунків</div>
-        </div>
-        <div class="stat-box">
-            <div class="stat-value" id="stat-completed-chunks">0</div>
-            <div class="stat-label">Опрацьовано</div>
-        </div>
-        <div class="stat-box">
-            <div class="stat-value" id="stat-parsed-records">0</div>
-            <div class="stat-label">Знайдено об'єктів</div>
-        </div>
-    </div>
-
-    <div class="grid-container">
-        <!-- ЛІВА КОЛОНКА: Налаштування та список пакунків -->
-        <div>
-            <div class="card">
-                <div class="card-title">1. Завантаження CSV</div>
-                <label>Оберіть файл вашої бази (.csv):</label>
-                <input type="file" id="csv-file-input" accept=".csv">
-
-                <label>Розмір одного пакунка (рядків):</label>
-                <input type="number" id="chunk-size-input" value="30" min="5" max="200">
-
-                <button class="btn" onclick="processUploadedCSV()">Розбити файл на пакунки</button>
+    <!-- ВКЛАДКА 1: ОБРОБКА ПАКУНКІВ (ОРИГІНАЛЬНА БАЗА ТА КОРЕКТНИЙ СТАН) -->
+    <div id="batch-tab" class="tab-content active">
+        <div class="stats-bar">
+            <div class="stat-box">
+                <div class="stat-value" id="stat-total-chunks">0</div>
+                <div class="stat-label">Всього пакунків</div>
             </div>
-
-            <div class="card">
-                <div class="card-title">
-                    <span>2. Пакунки</span>
-                    <button class="btn-outline" style="padding: 4px 8px; font-size: 0.75rem;" onclick="resetAllData()">Скинути все</button>
-                </div>
-                <div class="chunk-list" id="chunks-container">
-                    <p style="color: var(--text-muted); font-size: 0.85rem;">Завантажте CSV, щоб побачити список пакунків...</p>
-                </div>
+            <div class="stat-box">
+                <div class="stat-value" id="stat-completed-chunks">0</div>
+                <div class="stat-label">Опрацьовано</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="stat-parsed-records">0</div>
+                <div class="stat-label">Знайдено об'єктів</div>
             </div>
         </div>
 
-        <!-- ПРАВА КОЛОНКА: Робоча зона для генерації Промпта та додавання результатів -->
-        <div>
-            <div class="card" id="workspace-card" style="display: none;">
-                <div class="card-title" id="active-chunk-title">Пакунок #1</div>
+        <div class="grid-container">
+            <!-- ЛІВА КОЛОНКА -->
+            <div>
+                <div class="card">
+                    <div class="card-title">1. Завантаження CSV</div>
+                    <label>Оберіть файл вашої бази (.csv):</label>
+                    <input type="file" id="csv-file-input" accept=".csv">
 
-                <label>Автоматичний промпт для чату (скопіюйте та відправте мені в чат):</label>
-                <textarea id="prompt-output" readonly></textarea>
-                <button class="btn" style="margin-bottom: 20px;" onclick="copyPrompt()">Скопіювати промпт у буфер</button>
+                    <label>Розмір одного пакунка (рядків):</label>
+                    <input type="number" id="chunk-size-input" value="30" min="5" max="200">
 
-                <label>Вставте відповідь із чату (текст або CSV):</label>
-                <textarea id="response-input" placeholder="Вставте відповідь, яку згенерував AI..."></textarea>
-                
-                <div style="display: flex; gap: 10px;">
-                    <button class="btn btn-green" onclick="saveChunkResponse()">Зберегти результат для цього пакунка</button>
+                    <button class="btn" onclick="processUploadedCSV()">Розбити файл на пакунки</button>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">
+                        <span>2. Пакунки</span>
+                        <button class="btn-outline" style="padding: 4px 8px; font-size: 0.75rem;" onclick="resetAllData()">Скинути все</button>
+                    </div>
+                    <div class="chunk-list" id="chunks-container">
+                        <p style="color: var(--text-muted); font-size: 0.85rem;">Завантажте CSV, щоб побачити список пакунків...</p>
+                    </div>
                 </div>
             </div>
 
-            <div class="card">
-                <div class="card-title">
-                    <span>3. Експорт підсумкового CSV</span>
-                </div>
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
-                    Усі ваші збережені відповіді автоматично об'єднуються та очищаються. Натисніть на клітинку для редагування.
-                </p>
-                <button class="btn btn-green" onclick="exportMergedCSV()">Завантажити report.csv</button>
+            <!-- ПРАВА КОЛОНКА -->
+            <div>
+                <div class="card" id="workspace-card" style="display: none;">
+                    <div class="card-title" id="active-chunk-title">Пакунок #1</div>
 
-                <div style="margin-top: 16px;">
-                    <label>Попередній перегляд зібраних даних (з прокруткою та редагуванням):</label>
-                    <div class="table-scroll-container">
+                    <label>Автоматичний промпт для чату (скопіюйте та відправте мені в чат):</label>
+                    <textarea id="prompt-output" readonly></textarea>
+                    <button class="btn" style="margin-bottom: 20px;" onclick="copyPrompt()">Скопіювати промпт у буфер</button>
+
+                    <label>Вставте відповідь із чату (текст або CSV):</label>
+                    <textarea id="response-input" placeholder="Вставте відповідь, яку згенерував AI..."></textarea>
+                    
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-green" onclick="saveChunkResponse()">Зберегти результат для цього пакунка</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">
+                        <span>3. Експорт підсумкового CSV</span>
+                    </div>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
+                        Усі ваші збережені відповіді автоматично об'єднуються та очищаються.
+                    </p>
+                    <button class="btn btn-green" onclick="exportMergedCSV()">Завантажити report.csv</button>
+
+                    <div style="margin-top: 16px; overflow-x: auto;">
+                        <label>Попередній перегляд зібраних даних:</label>
                         <table id="preview-table">
                             <thead>
                                 <tr>
@@ -369,11 +384,10 @@
                                     <th>lon</th>
                                     <th>hours</th>
                                     <th>toilet</th>
-                                    <th>дія</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Дані відсутні</td></tr>
+                                <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Дані відсутні</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -382,15 +396,60 @@
         </div>
     </div>
 
+    <!-- ВКЛАДКА 2: РЕДАКТОР СТАРОЇ БАЗИ (ПОВНІСТЮ ОКРЕМИЙ МОДУЛЬ) -->
+    <div id="editor-tab" class="tab-content">
+        <div class="card">
+            <div class="card-title">Завантаження та перегляд старої бази</div>
+            <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 250px;">
+                    <label>Оберіть файл старої бази (.csv):</label>
+                    <input type="file" id="old-csv-file-input" accept=".csv" style="margin-bottom:0;">
+                </div>
+                <div style="width: 200px;">
+                    <button class="btn" onclick="loadOldCSV()">Завантажити базу</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="old-csv-editor-card" style="display: none;">
+            <div class="card-title">
+                <span>Рядки бази даних (<span id="old-csv-count">0</span>)</span>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn-outline" style="padding: 4px 8px; font-size: 0.75rem;" onclick="copySelectedOldRows()">Скопіювати вибрані рядки</button>
+                    <button class="btn-outline" style="padding: 4px 8px; font-size: 0.75rem;" onclick="copyAllFilteredOldRows()">Скопіювати всі відфільтровані</button>
+                </div>
+            </div>
+
+            <label>Швидкий пошук / Фільтр:</label>
+            <input type="text" id="old-csv-search" placeholder="Введіть бренд, назву чи будь-яке слово..." oninput="filterOldCSV()">
+
+            <div class="table-scroll">
+                <table id="old-csv-table">
+                    <thead id="old-csv-thead"></thead>
+                    <tbody id="old-csv-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <div class="toast" id="toast-msg">Скопійовано!</div>
 
     <script>
+        // === СТАН ОСНОВНОГО ДОДАТКУ (НЕ ЗМІНЮЄТЬСЯ І ЗБЕРІГАЄ ВАШУ ПОТОЧНУ РОБОТУ) ===
         let appState = {
             chunks: [],
             activeChunkIndex: 0
         };
 
+        // === СТАН РЕДАКТОРА СТАРОЇ БАЗИ (ІЗОЛЬОВАНИЙ) ===
+        let oldState = {
+            headers: [],
+            rows: [],
+            filteredIndices: []
+        };
+
         window.onload = function() {
+            // Завантаження основного стану
             const saved = localStorage.getItem('csv_batch_app_state');
             if (saved) {
                 try {
@@ -405,10 +464,44 @@
                     console.error("Помилка відновлення стану", e);
                 }
             }
+
+            // Завантаження стану старої бази
+            const oldSaved = localStorage.getItem('csv_old_editor_state');
+            if (oldSaved) {
+                try {
+                    oldState = JSON.parse(oldSaved);
+                    if (oldState.rows && oldState.rows.length > 0) {
+                        filterOldCSV();
+                        document.getElementById('old-csv-editor-card').style.display = 'block';
+                    }
+                } catch(e) {
+                    console.error("Помилка відновлення стану старої бази", e);
+                }
+            }
         };
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+            document.getElementById(tabId).classList.add('active');
+            
+            const btns = document.querySelectorAll('.tab-btn');
+            if (tabId === 'batch-tab') {
+                btns[0].classList.add('active');
+                document.getElementById('header-subtitle').innerText = "Розбивайте великий CSV на фрагменти для чату, вставляйте відповіді та експортуйте єдиний підсумковий report.csv";
+            } else {
+                btns[1].classList.add('active');
+                document.getElementById('header-subtitle').innerText = "Переглядайте, фільтруйте та копіюйте потрібні фрагменти зі старої бази даних";
+            }
+        }
 
         function saveState() {
             localStorage.setItem('csv_batch_app_state', JSON.stringify(appState));
+        }
+
+        function saveOldState() {
+            localStorage.setItem('csv_old_editor_state', JSON.stringify(oldState));
         }
 
         function processUploadedCSV() {
@@ -425,7 +518,7 @@
 
             reader.onload = function(e) {
                 const text = e.target.result;
-                const lines = text.split(/\r\n|\n/).filter(line => line.trim() !== '');
+                const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
 
                 if (lines.length <= 1) {
                     alert("CSV файл порожній або містить тільки заголовок.");
@@ -510,38 +603,12 @@ ${chunk.data}
             showToast("Промпт скопійовано!");
         }
 
-        // Захист від випадкового збереження промпта замість відповіді
-        function validateAIResponse(text) {
-            const lowerText = text.toLowerCase();
-            const forbiddenKeywords = [
-                "ти аналітик баз даних",
-                "твоє завдання",
-                "ось фрагмент моєї бази csv",
-                "не додавай вступного чи підсумкового тексту"
-            ];
-
-            for (let keyword of forbiddenKeywords) {
-                if (lowerText.includes(keyword)) {
-                    return "ПОМИЛКА: Схоже, ви намагаєтесь зберегти сам промпт замість відповіді від AI!";
-                }
-            }
-            return null;
-        }
-
         function saveChunkResponse() {
             const idx = appState.activeChunkIndex;
             const resText = document.getElementById('response-input').value.trim();
 
             if (!resText) {
                 alert("Будь ласка, вставте відповідь від AI!");
-                return;
-            }
-
-            // Перевірка на промпт
-            const errorMsg = validateAIResponse(resText);
-            if (errorMsg) {
-                showToast(errorMsg, true);
-                alert(errorMsg);
                 return;
             }
 
@@ -561,22 +628,16 @@ ${chunk.data}
 
         function cleanAIResponse(rawText) {
             let text = rawText.replace(/```csv/gi, '').replace(/```/g, '').trim();
-            const lines = text.split(/\r\n|\n/).map(l => l.trim()).filter(l => l.length > 0);
+            const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
             return lines.filter(line => !line.toLowerCase().startsWith('status,brand,name'));
         }
 
-        function getParsedRowsWithMeta() {
+        function getAllParsedRows() {
             let allRows = [];
-            appState.chunks.forEach((chunk, chunkIdx) => {
+            appState.chunks.forEach(chunk => {
                 if (chunk.response && chunk.status === 'completed') {
                     const cleaned = cleanAIResponse(chunk.response);
-                    cleaned.forEach((rowStr, rowIdx) => {
-                        allRows.push({
-                            chunkIdx: chunkIdx,
-                            rowIdx: rowIdx,
-                            rowStr: rowStr
-                        });
-                    });
+                    allRows = allRows.concat(cleaned);
                 }
             });
             return allRows;
@@ -587,104 +648,46 @@ ${chunk.data}
             const completed = appState.chunks.filter(c => c.status === 'completed').length;
             document.getElementById('stat-completed-chunks').innerText = completed;
 
-            const totalRows = getParsedRowsWithMeta().length;
+            const totalRows = getAllParsedRows().length;
             document.getElementById('stat-parsed-records').innerText = totalRows;
         }
 
         function renderPreviewTable() {
-            const rowsMeta = getParsedRowsWithMeta();
+            const rows = getAllParsedRows();
             const tbody = document.querySelector('#preview-table tbody');
 
-            if (rowsMeta.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Дані відсутні</td></tr>';
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Дані відсутні</td></tr>';
                 return;
             }
 
-            tbody.innerHTML = rowsMeta.map((item, globalIdx) => {
-                const cols = item.rowStr.split(',').map(c => c.trim().replace(/^"/, '').replace(/"$/, ''));
+            tbody.innerHTML = rows.slice(0, 10).map(rowStr => {
+                const cols = rowStr.split(',').map(c => c.trim().replace(/^"/, '').replace(/"$/, ''));
                 return `
-                    <tr class="swipe-row" id="row-${item.chunkIdx}-${item.rowIdx}" data-chunk="${item.chunkIdx}" data-row="${item.rowIdx}">
-                        <td contenteditable="true" onblur="updateCell(${item.chunkIdx}, ${item.rowIdx}, 0, this)">${cols[0] || ''}</td>
-                        <td contenteditable="true" onblur="updateCell(${item.chunkIdx}, ${item.rowIdx}, 1, this)">${cols[1] || ''}</td>
-                        <td contenteditable="true" onblur="updateCell(${item.chunkIdx}, ${item.rowIdx}, 2, this)">${cols[2] || ''}</td>
-                        <td contenteditable="true" onblur="updateCell(${item.chunkIdx}, ${item.rowIdx}, 3, this)">${cols[3] || ''}</td>
-                        <td contenteditable="true" onblur="updateCell(${item.chunkIdx}, ${item.rowIdx}, 4, this)">${cols[4] || ''}</td>
-                        <td contenteditable="true" onblur="updateCell(${item.chunkIdx}, ${item.rowIdx}, 5, this)">${cols[5] || ''}</td>
-                        <td contenteditable="true" onblur="updateCell(${item.chunkIdx}, ${item.rowIdx}, 6, this)">${cols[6] || ''}</td>
-                        <td style="text-align: center;">
-                            <button class="btn btn-red" onclick="deleteRow(${item.chunkIdx}, ${item.rowIdx})" title="Видалити рядок">✕</button>
-                        </td>
+                    <tr>
+                        <td><span class="status-badge ${cols[0] === 'NEW' ? 'status-done' : 'status-pending'}">${cols[0] || ''}</span></td>
+                        <td>${cols[1] || ''}</td>
+                        <td>${cols[2] || ''}</td>
+                        <td>${cols[3] || ''}</td>
+                        <td>${cols[4] || ''}</td>
+                        <td>${cols[5] || ''}</td>
+                        <td>${cols[6] || ''}</td>
                     </tr>
                 `;
             }).join('');
-
-            initSwipeHandlers();
-        }
-
-        function updateCell(chunkIdx, rowIdx, colIdx, element) {
-            const chunk = appState.chunks[chunkIdx];
-            let cleanedLines = cleanAIResponse(chunk.response);
-            
-            if (cleanedLines[rowIdx]) {
-                let cols = cleanedLines[rowIdx].split(',').map(c => c.trim().replace(/^"/, '').replace(/"$/, ''));
-                cols[colIdx] = element.innerText.trim();
-                cleanedLines[rowIdx] = cols.join(',');
-                chunk.response = cleanedLines.join('\n');
-                saveState();
-                updateStats();
-            }
-        }
-
-        function deleteRow(chunkIdx, rowIdx) {
-            const chunk = appState.chunks[chunkIdx];
-            let cleanedLines = cleanAIResponse(chunk.response);
-            
-            cleanedLines.splice(rowIdx, 1);
-            chunk.response = cleanedLines.join('\n');
-            if (cleanedLines.length === 0) {
-                chunk.status = 'pending';
-            }
-
-            saveState();
-            renderChunksList();
-            updateStats();
-            renderPreviewTable();
-            showToast("Рядок видалено!");
-        }
-
-        function initSwipeHandlers() {
-            const rows = document.querySelectorAll('.swipe-row');
-            rows.forEach(row => {
-                let startX = 0;
-                row.addEventListener('touchstart', (e) => {
-                    startX = e.touches[0].clientX;
-                }, {passive: true});
-
-                row.addEventListener('touchend', (e) => {
-                    let endX = e.changedTouches[0].clientX;
-                    if (startX - endX > 80) {
-                        const chunkIdx = row.getAttribute('data-chunk');
-                        const rowIdx = row.getAttribute('data-row');
-                        if (confirm("Видалити цей рядок свайпом?")) {
-                            deleteRow(chunkIdx, rowIdx);
-                        }
-                    }
-                }, {passive: true});
-            });
         }
 
         function exportMergedCSV() {
-            const rowsMeta = getParsedRowsWithMeta();
-            if (rowsMeta.length === 0) {
+            const rows = getAllParsedRows();
+            if (rows.length === 0) {
                 alert("Немає даних для експорту! Спочатку збережіть хоча б одну відповідь від AI.");
                 return;
             }
 
             const header = "status,brand,name,lat,lon,hours,toilet";
-            const rows = rowsMeta.map(item => item.rowStr);
             const fullCSV = [header, ...rows].join('\n');
 
-            const blob = new Blob(["\ufeff" + fullCSV], { type: 'text/csv;charset=utf-8;' });
+            const blob = new Blob(["\uFEFF" + fullCSV], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             const url = URL.createObjectURL(blob);
             link.setAttribute("href", url);
@@ -707,16 +710,121 @@ ${chunk.data}
             }
         }
 
-        function showToast(msg, isError = false) {
+        // === ФУНКЦІОНАЛ ДЛЯ РЕДАКТОРА СТАРОЇ БАЗИ ===
+        function loadOldCSV() {
+            const fileInput = document.getElementById('old-csv-file-input');
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert("Оберіть CSV-файл старої бази!");
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+
+                if (lines.length === 0) {
+                    alert("Файл порожній!");
+                    return;
+                }
+
+                oldState.headers = lines[0].split(',').map(h => h.trim().replace(/^"/, '').replace(/"$/, ''));
+                oldState.rows = lines.slice(1).map(line => line.trim());
+
+                saveOldState();
+                filterOldCSV();
+                document.getElementById('old-csv-editor-card').style.display = 'block';
+                showToast("Стару базу успішно завантажено!");
+            };
+
+            reader.readAsText(file);
+        }
+
+        function filterOldCSV() {
+            const query = document.getElementById('old-csv-search').value.toLowerCase();
+            oldState.filteredIndices = [];
+
+            oldState.rows.forEach((row, idx) => {
+                if (!query || row.toLowerCase().includes(query)) {
+                    oldState.filteredIndices.push(idx);
+                }
+            });
+
+            renderOldTable();
+        }
+
+        function renderOldTable() {
+            const thead = document.getElementById('old-csv-thead');
+            const tbody = document.getElementById('old-csv-tbody');
+
+            document.getElementById('old-csv-count').innerText = oldState.filteredIndices.length;
+
+            thead.innerHTML = `
+                <tr>
+                    <th style="width: 40px; text-align: center;"><input type="checkbox" onchange="toggleSelectAllOldRows(this)"></th>
+                    ${oldState.headers.map(h => `<th>${h}</th>`).join('')}
+                </tr>
+            `;
+
+            if (oldState.filteredIndices.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="${oldState.headers.length + 1}" style="text-align: center; color: var(--text-muted);">Записів не знайдено</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = oldState.filteredIndices.slice(0, 100).map(idx => {
+                const rowStr = oldState.rows[idx];
+                const cols = rowStr.split(',').map(c => c.trim().replace(/^"/, '').replace(/"$/, ''));
+                return `
+                    <tr>
+                        <td style="text-align: center;"><input type="checkbox" class="old-row-checkbox" data-index="${idx}"></td>
+                        ${cols.map(c => `<td>${c}</td>`).join('')}
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function toggleSelectAllOldRows(master) {
+            const checkboxes = document.querySelectorAll('.old-row-checkbox');
+            checkboxes.forEach(cb => cb.checked = master.checked);
+        }
+
+        function copySelectedOldRows() {
+            const checkboxes = document.querySelectorAll('.old-row-checkbox:checked');
+            if (checkboxes.length === 0) {
+                alert("Виділіть хоча б один рядок прапорцем!");
+                return;
+            }
+
+            const selectedData = [];
+            checkboxes.forEach(cb => {
+                const idx = cb.getAttribute('data-index');
+                selectedData.push(oldState.rows[idx]);
+            });
+
+            const textToCopy = [oldState.headers.join(','), ...selectedData].join('\n');
+            navigator.clipboard.writeText(textToCopy);
+            showToast("Вибрані рядки скопійовано!");
+        }
+
+        function copyAllFilteredOldRows() {
+            if (oldState.filteredIndices.length === 0) {
+                alert("Немає рядків для копіювання!");
+                return;
+            }
+
+            const filteredData = oldState.filteredIndices.map(idx => oldState.rows[idx]);
+            const textToCopy = [oldState.headers.join(','), ...filteredData].join('\n');
+            navigator.clipboard.writeText(textToCopy);
+            showToast("Усі відфільтровані рядки скопійовано!");
+        }
+
+        function showToast(msg) {
             const toast = document.getElementById('toast-msg');
             toast.innerText = msg;
-            if (isError) {
-                toast.classList.add('toast-error');
-            } else {
-                toast.classList.remove('toast-error');
-            }
             toast.style.display = 'block';
-            setTimeout(() => { toast.style.display = 'none'; }, 3000);
+            setTimeout(() => { toast.style.display = 'none'; }, 2500);
         }
     </script>
 </body>
